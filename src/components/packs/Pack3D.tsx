@@ -54,6 +54,8 @@ export function Pack3D({
   const dim = SIZES[size];
   const fx = TIER_FX[pack.tier];
   const half = dim.depth / 2;
+  /** Black outline width, scaled down with the pack so tiles keep a 1px stroke. */
+  const edge = Math.max(1, Math.round(2 * (dim.width / SIZES.hero.width)));
 
   return (
     <div
@@ -84,47 +86,45 @@ export function Pack3D({
             <PackFaceBack pack={pack} dim={dim} />
           </div>
 
-          {/* Left side */}
-          <div
-            className="absolute inset-y-0 left-1/2"
-            style={{
-              width: dim.depth,
-              transform: `translateX(-50%) rotateY(90deg) translateZ(${dim.width / 2}px)`,
-              background: pack.art.shade,
-              boxShadow: `0 0 0 ${Math.max(1, Math.round(2 * (dim.width / SIZES.hero.width)))}px var(--color-abyss), inset 1px 0 0 rgb(255 255 255 / 0.18), inset -1px 0 0 rgb(0 0 0 / 0.4)`,
-            }}
-          />
-
-          {/* Right side */}
+          {/* Side faces. Each one is anchored on the axis it sits on and pulled
+              back to the box centre by half its own thickness, so `translateZ`
+              pushes it out to exactly the edge it belongs to. Anchoring a face on
+              the opposite side (e.g. the bottom face on `top-1/2`) lands it a full
+              `depth` past its edge, leaving it detached and floating. */}
           <div
             className="absolute inset-y-0 right-1/2"
             style={{
               width: dim.depth,
               transform: `translateX(50%) rotateY(-90deg) translateZ(${dim.width / 2}px)`,
               background: pack.art.shade,
-              boxShadow: `0 0 0 ${Math.max(1, Math.round(2 * (dim.width / SIZES.hero.width)))}px var(--color-abyss), inset 1px 0 0 rgb(255 255 255 / 0.18), inset -1px 0 0 rgb(0 0 0 / 0.4)`,
+              boxShadow: `0 0 0 ${edge}px var(--color-abyss), inset 1px 0 0 rgb(255 255 255 / 0.18), inset -1px 0 0 rgb(0 0 0 / 0.4)`,
             }}
           />
-
-          {/* Top side */}
+          <div
+            className="absolute inset-y-0 left-1/2"
+            style={{
+              width: dim.depth,
+              transform: `translateX(-50%) rotateY(90deg) translateZ(${dim.width / 2}px)`,
+              background: pack.art.shade,
+              boxShadow: `0 0 0 ${edge}px var(--color-abyss), inset 1px 0 0 rgb(255 255 255 / 0.18), inset -1px 0 0 rgb(0 0 0 / 0.4)`,
+            }}
+          />
           <div
             className="absolute inset-x-0 top-1/2"
             style={{
               height: dim.depth,
               transform: `translateY(-50%) rotateX(90deg) translateZ(${dim.height / 2}px)`,
               background: pack.art.shade,
-              boxShadow: `0 0 0 ${Math.max(1, Math.round(2 * (dim.width / SIZES.hero.width)))}px var(--color-abyss), inset 0 1px 0 rgb(255 255 255 / 0.18), inset 0 -1px 0 rgb(0 0 0 / 0.4)`,
+              boxShadow: `0 0 0 ${edge}px var(--color-abyss), inset 0 1px 0 rgb(255 255 255 / 0.18), inset 0 -1px 0 rgb(0 0 0 / 0.4)`,
             }}
           />
-
-          {/* Bottom side */}
           <div
-            className="absolute inset-x-0 top-1/2"
+            className="absolute inset-x-0 bottom-1/2"
             style={{
               height: dim.depth,
               transform: `translateY(50%) rotateX(-90deg) translateZ(${dim.height / 2}px)`,
               background: pack.art.shade,
-              boxShadow: `0 0 0 ${Math.max(1, Math.round(2 * (dim.width / SIZES.hero.width)))}px var(--color-abyss), inset 0 1px 0 rgb(255 255 255 / 0.18), inset 0 -1px 0 rgb(0 0 0 / 0.4)`,
+              boxShadow: `0 0 0 ${edge}px var(--color-abyss), inset 0 1px 0 rgb(0 0 0 / 0.4), inset 0 -1px 0 rgb(255 255 255 / 0.12)`,
             }}
           />
         </div>

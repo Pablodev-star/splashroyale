@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import type { HudState, MinimapEntity } from '@/types/game';
 import { useAnimationFrame } from '@/hooks/useAnimationFrame';
 import type { ArenaFighter } from './ArenaView';
+import type { AnimationId } from '@/game/sprites';
 import { CHARACTERS } from '@/data/characters';
 
 /**
@@ -154,6 +155,25 @@ export function useMatchSimulation({
     ],
   };
 
+  // Sprite state (Block 2A). Block 3 will pick these from real actions; the
+  // priority order — submerged, charging, moving, still — is the same one the
+  // engine should keep.
+  const selfSpeed = Math.abs(Math.cos(t * 0.6) * 0.06) + Math.abs(Math.cos(t * 0.9) * 0.108);
+  const selfAnimation: AnimationId = submerged
+    ? 'dive'
+    : state.selfCharge > 0.02
+      ? 'charge'
+      : selfSpeed > 0.06
+        ? 'swim'
+        : 'idle';
+
+  const opponentSpeed = Math.abs(Math.sin(t * 0.5) * 0.05) + Math.abs(Math.sin(t * 0.8) * 0.112);
+  const opponentAnimation: AnimationId = state.opponentSubmerged
+    ? 'dive'
+    : opponentSpeed > 0.06
+      ? 'swim'
+      : 'idle';
+
   const fighters: ArenaFighter[] = [
     {
       id: 'self',
@@ -161,6 +181,7 @@ export function useMatchSimulation({
       y: selfY,
       facing: opponentX > selfX ? 'right' : 'left',
       submerged,
+      animation: selfAnimation,
       label: playerName,
       colors: self.colors,
     },
@@ -170,6 +191,7 @@ export function useMatchSimulation({
       y: opponentY,
       facing: selfX > opponentX ? 'right' : 'left',
       submerged: state.opponentSubmerged,
+      animation: opponentAnimation,
       label: opponentName,
       colors: opponentCharacter.colors,
     },
