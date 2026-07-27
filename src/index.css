@@ -112,13 +112,15 @@
   }
 }
 
-/* Holographic band sweeping diagonally across a card face. */
+/* Holographic band sweeping diagonally across a card face.
+   Loop is seamless: starts with sheen off-left, travels fully across, ends with
+   sheen off-right. When it loops, the wrap-around is smooth. */
 @keyframes holo {
   0% {
-    background-position: -180% 0;
+    background-position: -200% 0;
   }
   100% {
-    background-position: 280% 0;
+    background-position: 200% 0;
   }
 }
 
@@ -611,15 +613,17 @@
   background-size: 220% 100%;
 }
 
-/* Legendary rainbow sheen, stronger and multi-hued. */
+/* Legendary rainbow sheen, stronger and multi-hued with full spectrum. */
 @utility holo-sheen-rainbow {
   background-image: linear-gradient(
-    100deg,
-    transparent 30%,
-    rgb(255 120 200 / 0.45) 42%,
-    rgb(120 220 255 / 0.55) 50%,
-    rgb(200 255 150 / 0.45) 58%,
-    transparent 70%
+    98deg,
+    transparent 25%,
+    rgb(255 100 200 / 0.48) 36%,
+    rgb(255 150 100 / 0.50) 41%,
+    rgb(120 220 255 / 0.56) 50%,
+    rgb(150 255 100 / 0.52) 59%,
+    rgb(100 200 255 / 0.48) 64%,
+    transparent 75%
   );
   background-size: 220% 100%;
 }
