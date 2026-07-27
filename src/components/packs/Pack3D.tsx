@@ -84,23 +84,47 @@ export function Pack3D({
             <PackFaceBack pack={pack} dim={dim} />
           </div>
 
-          {/* Left / right edges give the wrapper real thickness. */}
+          {/* Left side */}
           <div
             className="absolute inset-y-0 left-1/2"
             style={{
               width: dim.depth,
               transform: `translateX(-50%) rotateY(90deg) translateZ(${dim.width / 2}px)`,
               background: pack.art.shade,
-              boxShadow: 'inset 2px 0 0 rgb(255 255 255 / 0.18), inset -2px 0 0 rgb(0 0 0 / 0.4)',
+              boxShadow: `0 0 0 ${Math.max(1, Math.round(2 * (dim.width / SIZES.hero.width)))}px var(--color-abyss), inset 1px 0 0 rgb(255 255 255 / 0.18), inset -1px 0 0 rgb(0 0 0 / 0.4)`,
             }}
           />
+
+          {/* Right side */}
+          <div
+            className="absolute inset-y-0 right-1/2"
+            style={{
+              width: dim.depth,
+              transform: `translateX(50%) rotateY(-90deg) translateZ(${dim.width / 2}px)`,
+              background: pack.art.shade,
+              boxShadow: `0 0 0 ${Math.max(1, Math.round(2 * (dim.width / SIZES.hero.width)))}px var(--color-abyss), inset 1px 0 0 rgb(255 255 255 / 0.18), inset -1px 0 0 rgb(0 0 0 / 0.4)`,
+            }}
+          />
+
+          {/* Top side */}
           <div
             className="absolute inset-x-0 top-1/2"
             style={{
               height: dim.depth,
               transform: `translateY(-50%) rotateX(90deg) translateZ(${dim.height / 2}px)`,
               background: pack.art.shade,
-              boxShadow: 'inset 0 2px 0 rgb(255 255 255 / 0.18)',
+              boxShadow: `0 0 0 ${Math.max(1, Math.round(2 * (dim.width / SIZES.hero.width)))}px var(--color-abyss), inset 0 1px 0 rgb(255 255 255 / 0.18), inset 0 -1px 0 rgb(0 0 0 / 0.4)`,
+            }}
+          />
+
+          {/* Bottom side */}
+          <div
+            className="absolute inset-x-0 top-1/2"
+            style={{
+              height: dim.depth,
+              transform: `translateY(50%) rotateX(-90deg) translateZ(${dim.height / 2}px)`,
+              background: pack.art.shade,
+              boxShadow: `0 0 0 ${Math.max(1, Math.round(2 * (dim.width / SIZES.hero.width)))}px var(--color-abyss), inset 0 1px 0 rgb(255 255 255 / 0.18), inset 0 -1px 0 rgb(0 0 0 / 0.4)`,
             }}
           />
         </div>
