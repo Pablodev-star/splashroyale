@@ -1,0 +1,361 @@
+@import 'tailwindcss';
+
+/* ------------------------------------------------------------------------- */
+/* Design tokens — see STYLEGUIDE.md. Never hardcode a hex value in a         */
+/* component; add a token here instead.                                       */
+/* ------------------------------------------------------------------------- */
+@theme {
+  --color-abyss: #04121f;
+  --color-deep: #0a2540;
+  --color-ocean: #10466e;
+  --color-lagoon: #1878a8;
+  --color-surf: #34b6d8;
+  --color-foam: #9ef0f5;
+  --color-mist: #e8fbff;
+  --color-sand: #f2d9a0;
+  --color-sand-deep: #c9a45f;
+  --color-gold: #ffc247;
+  --color-gold-deep: #b8791c;
+  --color-hp: #45e07a;
+  --color-hp-deep: #1d8a48;
+  --color-oxygen: #4fd8ff;
+  --color-charge: #ffd54a;
+  --color-danger: #ff4d5e;
+  --color-danger-deep: #a11f2c;
+
+  --color-rarity-common: #b8c6d1;
+  --color-rarity-rare: #4fa8ff;
+  --color-rarity-epic: #b463ff;
+  --color-rarity-legendary: #ffb31f;
+
+  /* Swap this token for a real bitmap font dropped in public/fonts/. */
+  --font-pixel:
+    ui-monospace, 'SFMono-Regular', 'DejaVu Sans Mono', 'Liberation Mono', Menlo, Consolas,
+    monospace;
+
+  --ease-pixel: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-overshoot: cubic-bezier(0.2, 1.3, 0.4, 1);
+
+  --animate-bob: bob 2.4s ease-in-out infinite;
+  --animate-bob-slow: bob 4s ease-in-out infinite;
+  --animate-shimmer: shimmer 1.6s linear infinite;
+  --animate-pulse-glow: pulse-glow 1.4s ease-in-out infinite;
+  --animate-blink: blink 1s steps(2, jump-none) infinite;
+  --animate-wave-scroll: wave-scroll 6s linear infinite;
+  --animate-rise: rise 3.6s linear infinite;
+  --animate-shake: shake 0.4s steps(4, jump-none) infinite;
+}
+
+@keyframes bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -150% 0;
+  }
+  100% {
+    background-position: 250% 0;
+  }
+}
+
+@keyframes pulse-glow {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes blink {
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0.25;
+  }
+}
+
+@keyframes wave-scroll {
+  0% {
+    background-position-x: 0;
+  }
+  100% {
+    background-position-x: 32px;
+  }
+}
+
+@keyframes rise {
+  0% {
+    transform: translateY(0);
+    opacity: 0;
+  }
+  15% {
+    opacity: 1;
+  }
+  85% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-140px);
+    opacity: 0;
+  }
+}
+
+@keyframes shake {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  25% {
+    transform: translate(-2px, 1px);
+  }
+  50% {
+    transform: translate(2px, -1px);
+  }
+  75% {
+    transform: translate(-1px, -2px);
+  }
+}
+
+/* Screen transitions (two-phase, driven by NavigationContext) */
+@keyframes screen-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes screen-fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+@keyframes screen-slide-in-left {
+  from {
+    opacity: 0;
+    transform: translateX(6%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+@keyframes screen-slide-out-left {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(-6%);
+  }
+}
+@keyframes screen-slide-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(-6%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+@keyframes screen-slide-out-right {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(6%);
+  }
+}
+@keyframes screen-scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+@keyframes screen-scale-out {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.04);
+  }
+}
+
+/* ------------------------------------------------------------------------- */
+/* Base                                                                      */
+/* ------------------------------------------------------------------------- */
+@layer base {
+  * {
+    border-radius: 0 !important; /* Pixel art: hard edges everywhere. */
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    background-color: var(--color-abyss);
+    color: var(--color-mist);
+    font-family: var(--font-pixel);
+    letter-spacing: 0.03em;
+    -webkit-font-smoothing: none;
+    font-smooth: never;
+    overscroll-behavior: none;
+    text-rendering: optimizeSpeed;
+  }
+
+  button {
+    font-family: inherit;
+    letter-spacing: inherit;
+    cursor: pointer;
+  }
+
+  input {
+    font-family: inherit;
+  }
+
+  canvas,
+  img {
+    image-rendering: pixelated;
+  }
+
+  ::selection {
+    background: var(--color-surf);
+    color: var(--color-abyss);
+  }
+
+  /* Chunky pixel scrollbar */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: var(--color-abyss);
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-lagoon);
+    border: 2px solid var(--color-abyss);
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--color-surf);
+  }
+}
+
+/* ------------------------------------------------------------------------- */
+/* Pixel utilities                                                           */
+/* ------------------------------------------------------------------------- */
+
+/* Thick, stepped border drawn with box-shadow so it always lands on whole
+   pixels (a real `border` would blur under fractional device pixel ratios). */
+@utility pixel-border {
+  box-shadow:
+    0 0 0 2px var(--color-abyss),
+    0 0 0 5px var(--color-lagoon);
+}
+
+@utility pixel-border-active {
+  box-shadow:
+    0 0 0 2px var(--color-abyss),
+    0 0 0 5px var(--color-surf);
+}
+
+@utility pixel-border-gold {
+  box-shadow:
+    0 0 0 2px var(--color-abyss),
+    0 0 0 5px var(--color-gold);
+}
+
+@utility pixel-border-thin {
+  box-shadow:
+    0 0 0 1px var(--color-abyss),
+    0 0 0 3px var(--color-lagoon);
+}
+
+/* Inset bevel: 2px light on top/left, 2px dark on bottom/right. */
+@utility pixel-bevel {
+  box-shadow:
+    inset 2px 2px 0 0 rgb(255 255 255 / 0.14),
+    inset -2px -2px 0 0 rgb(0 0 0 / 0.38);
+}
+
+@utility pixel-bevel-inset {
+  box-shadow:
+    inset 2px 2px 0 0 rgb(0 0 0 / 0.45),
+    inset -2px -2px 0 0 rgb(255 255 255 / 0.08);
+}
+
+@utility text-pixel-shadow {
+  text-shadow:
+    2px 2px 0 var(--color-abyss),
+    4px 4px 0 rgb(0 0 0 / 0.35);
+}
+
+@utility text-pixel-shadow-sm {
+  text-shadow: 2px 2px 0 var(--color-abyss);
+}
+
+/* Scanline / CRT veil laid over the whole stage. */
+@utility scanlines {
+  position: relative;
+
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: repeating-linear-gradient(
+      to bottom,
+      rgb(0 0 0 / 0.16) 0px,
+      rgb(0 0 0 / 0.16) 1px,
+      transparent 1px,
+      transparent 3px
+    );
+  }
+}
+
+@utility stage {
+  width: 100%;
+  max-width: 1280px;
+  margin-inline: auto;
+  padding-inline: max(1rem, env(safe-area-inset-left));
+  padding-block: clamp(0.75rem, 2.5vh, 2rem);
+}
+
+/* Reduced motion: kill loops and transitions, keep everything readable. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
