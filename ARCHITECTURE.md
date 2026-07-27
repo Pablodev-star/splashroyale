@@ -61,6 +61,9 @@ src/
     useAnimationFrame.ts   rAF loop with fps cap + pause on hidden tab
     useReducedMotion.ts    prefers-reduced-motion
 
+  game/                    Engine-side code. Never imports from screens/.
+    sprites/               Pixel rig, keyframed animations, atlas bake, playback
+
   components/
     ui/                    Design-system primitives. No game knowledge.
     packs/                 3D card pack + pull-rate table
@@ -93,15 +96,42 @@ narrow, typed interface.
 
 | Block                                 | Owns                                                   | Consumes                                                                               |
 | ------------------------------------- | ------------------------------------------------------ | -------------------------------------------------------------------------------------- |
-| **1 — UI** (this PR)                  | `components/**`, `screens/**`, `state/**`, `index.css` | —                                                                                      |
-| **2A — Character sprites**            | `game/sprites/**`, `public/sprites/**`                 | Nothing from UI; exposes a sprite-playback API.                                        |
+| **1 — UI** (done)                     | `components/**`, `screens/**`, `state/**`, `index.css` | —                                                                                      |
+| **2A — Character sprites** (done)     | `game/sprites/**`                                      | Character palettes from `data/characters.ts`; exposes a sprite-playback API.            |
 | **2B — Water & reactive environment** | `components/water/**` (extends), shaders               | Map palettes from `data/maps.ts`.                                                      |
 | **2C — Splash animations**            | `game/vfx/**`                                          | Charge value from Block 3, ripple API from 2B.                                         |
 | **3 — Controls / physics / combat**   | `game/**`                                              | Renders into the `<MatchScreen />` slot and feeds `HudState`.                          |
 | **4 — Cards, shop, packs**            | `features/progression/**`                              | `ShopScreen`/`PackPreviewScreen`/`CollectionScreen`, `data/cards.ts`, `data/packs.ts`. |
 | **5 — Card detail & level-up**        | `screens/CardDetailScreen.tsx`                         | The `cardDetail` route and card types from Block 4.                                    |
 
-### 4.1 The HUD contract (Block 1 → Block 3)
+### 4.1 The sprite contract (Block 2A → Block 3)
+
+Fighters are animated through one narrow surface, `@/game/sprites`:
+
+```ts
+const frame = useSpriteAnimation({ animation: 'swim' }); // AnimationId
+<SpriteView palette={{ primary, accent }} orientation="left" animation="swim" frame={frame} />;
+```
+
+Block 3 only decides *which* `AnimationId` a fighter is in each tick; timing,
+frame advance and drawing are already handled. The seven states are `idle`,
+`swim`, `charge`, `attack`, `kick`, `dive` and `hit`. `dive` does not loop — it
+holds its final frame, which **is** the submerged pose, so "underwater" needs no
+eighth state.
+
+**Why no `public/sprites/**` PNGs.** The art is a *pixel rig*: plain-text part
+matrices in `game/sprites/rig.ts` plus per-frame offset tables in
+`animations.ts`, baked into a real sprite-sheet canvas at runtime and cached per
+palette. Every character is a recolour of the same rig, so shipping PNGs would
+mean one binary per character per recolour, none of it reviewable in a diff.
+Two rules the rig depends on:
+
+- Every row of a part must be the same width, and every offset a whole number of
+  pixels. `validateRig()` checks the first and runs automatically in dev.
+- `right` is `left` mirrored at bake time by reflecting pixels inside the cell —
+  never a canvas `scale(-1, 1)`, which can land art off the pixel grid.
+
+### 4.2 The HUD contract (Block 1 → Block 3)
 
 `HudState` in `src/types/game.ts` is the single hand-off point. Block 3 must
 produce this object every frame; the HUD is otherwise pure and stateless:
@@ -116,7 +146,7 @@ interface HudState {
 }
 ```
 
-### 4.2 The navigation contract
+### 4.3 The navigation contract
 
 Screens never import each other. They call `useNavigation()`:
 

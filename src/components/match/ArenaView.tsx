@@ -2,6 +2,7 @@ import { useRef, type ReactNode } from 'react';
 import type { GameMap, MinimapEntity } from '@/types/game';
 import { WaterCanvas, type WaterCanvasHandle } from '@/components/water/WaterCanvas';
 import { FighterBillboard, type Facing } from './FighterBillboard';
+import type { AnimationId } from '@/game/sprites';
 import { CHARACTERS } from '@/data/characters';
 import { cn } from '@/lib/cn';
 
@@ -11,6 +12,8 @@ export interface ArenaFighter {
   y: number;
   facing: Facing;
   submerged: boolean;
+  /** Sprite state (Block 2A). Omitted falls back to idle/dive by `submerged`. */
+  animation?: AnimationId;
   label?: string;
   colors: { primary: string; secondary: string };
 }
@@ -60,6 +63,7 @@ export function ArenaView({
             colors={fighter.colors}
             facing={fighter.facing}
             submerged={fighter.submerged}
+            animation={fighter.animation}
             x={fighter.x}
             y={fighter.y}
             scale={2.4}

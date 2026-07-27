@@ -1,3 +1,4 @@
+import { SpriteView, useSpriteAnimation, type AnimationId } from '@/game/sprites';
 import { cn } from '@/lib/cn';
 
 export type Facing = 'front' | 'left' | 'right' | 'back';
@@ -6,6 +7,11 @@ export interface FighterBillboardProps {
   colors: { primary: string; secondary: string };
   facing?: Facing;
   submerged?: boolean;
+  /**
+   * Which animation to play. Optional so callers that only track `submerged`
+   * keep working; when omitted it is derived from `submerged`.
+   */
+  animation?: AnimationId;
   /** Normalised arena position, 0..1. */
   x: number;
   y: number;
@@ -16,27 +22,33 @@ export interface FighterBillboardProps {
 }
 
 /**
- * PLACEHOLDER(Block 2A): a CSS stand-in for the real billboard sprite so the HUD
- * and arena framing can be reviewed now. Block 2A replaces the body with the
- * character spritesheet (4 orientations × 7 animations) but keeps this component's
- * props — position, facing, submerged — as the interface.
+ * A billboard fighter: a sprite that always faces the camera, positioned in the
+ * arena's normalised space with a depth cue.
  *
- * The figure is laid out on a 24×40 "pixel" grid and scaled as a whole, so every
- * part stays on the same integer pixel grid (STYLEGUIDE §3.4).
+ * Block 2A replaced the CSS stand-in body with the real sprite system
+ * (`@/game/sprites`) while keeping this component's props as the interface, so
+ * Block 3 only has to feed it positions and an `AnimationId`.
  */
 export function FighterBillboard({
   colors,
   facing = 'front',
   submerged = false,
+  animation,
   x,
   y,
   scale = 1,
   label,
   className,
 }: FighterBillboardProps) {
-  // Near the camera (y → 1) sprites are bigger: the pseudo-3D depth cue.
-  const depthScale = (0.72 + y * 0.5) * scale;
-  const flip = facing === 'left';
+  // `dive` holds on its final frame, which is the underwater idle — so a
+  // submerged fighter is just this animation parked at the end.
+  const active: AnimationId = animation ?? (submerged ? 'dive' : 'idle');
+
+  const frame = useSpriteAnimation({ animation: active });
+
+  // Near the camera (y → 1) sprites are bigger: the pseudo-3D depth cue. Rounded
+  // to whole pixels so the sprite never lands between them.
+  const depthScale = Math.max(1, Math.round((0.72 + y * 0.5) * scale));
 
   return (
     <div
@@ -48,82 +60,20 @@ export function FighterBillboard({
         zIndex: Math.round(y * 100),
       }}
     >
-      {/* Label sits outside the scaled body so it stays legible at any depth. */}
+      {/* Label sits outside the sprite so it stays legible at any depth. */}
       {label && (
         <span className="text-mist/85 text-pixel-shadow-sm mb-1 text-[9px] tracking-[0.14em] whitespace-nowrap uppercase">
           {label}
         </span>
       )}
 
-      {/* The wrapper carries the *scaled* size so the label above it is never
-          overlapped by the sprite (scale alone does not affect layout). */}
-      <div
-        className={cn('relative', !submerged && 'animate-bob')}
-        style={{
-          width: (submerged ? 28 : 24) * depthScale,
-          height: (submerged ? 12 : 40) * depthScale,
-          animationDuration: '2.8s',
-        }}
-      >
-        <div
-          className="absolute top-0 left-0"
-          style={{
-            transform: `scale(${depthScale})`,
-            transformOrigin: 'top left',
-          }}
-        >
-          {submerged ? (
-            // Submerged: only a ripple ring plus rising bubbles break the surface.
-            <div className="relative h-[12px] w-[28px]">
-              <span className="border-foam/80 absolute inset-x-0 top-[4px] h-[8px] border-2" />
-              <span className="bg-foam/70 animate-bob absolute top-0 left-[6px] h-[2px] w-[2px]" />
-              <span className="bg-foam/50 animate-bob-slow absolute top-[2px] left-[18px] h-[2px] w-[2px]" />
-            </div>
-          ) : (
-            <div className={cn('relative h-[40px] w-[24px]', flip && 'scale-x-[-1]')}>
-              {/* hair / cap */}
-              <span
-                className="absolute top-0 left-[7px] h-[3px] w-[10px]"
-                style={{ background: colors.secondary }}
-              />
-              {/* head */}
-              <span className="absolute top-[3px] left-[7px] h-[8px] w-[10px] bg-[#f2c9a0]" />
-              {/* eyes — hidden when facing away, which is how the sprite reads direction */}
-              {facing !== 'back' && (
-                <>
-                  <span
-                    className="bg-abyss absolute top-[6px] h-[2px] w-[2px]"
-                    style={{ left: facing === 'front' ? '9px' : '13px' }}
-                  />
-                  {facing === 'front' && (
-                    <span className="bg-abyss absolute top-[6px] left-[13px] h-[2px] w-[2px]" />
-                  )}
-                </>
-              )}
-              {/* torso */}
-              <span
-                className="absolute top-[11px] left-[5px] h-[11px] w-[14px]"
-                style={{ background: colors.primary }}
-              />
-              {/* arms */}
-              {facing !== 'right' && (
-                <span className="absolute top-[12px] left-[2px] h-[8px] w-[3px] bg-[#f2c9a0]" />
-              )}
-              {facing !== 'left' && (
-                <span className="absolute top-[12px] left-[19px] h-[8px] w-[3px] bg-[#f2c9a0]" />
-              )}
-              {/* waterline foam */}
-              <span className="bg-foam absolute top-[21px] left-[-3px] h-[2px] w-[30px]" />
-              {/* refracted lower body under the surface */}
-              <span
-                className="absolute top-[23px] left-[6px] h-[10px] w-[12px] opacity-60"
-                style={{ background: colors.primary }}
-              />
-              <span className="bg-oxygen/30 absolute top-[23px] left-[-1px] h-[12px] w-[26px]" />
-            </div>
-          )}
-        </div>
-      </div>
+      <SpriteView
+        palette={{ primary: colors.primary, accent: colors.secondary }}
+        orientation={facing}
+        animation={active}
+        frame={frame}
+        scale={depthScale}
+      />
     </div>
   );
 }

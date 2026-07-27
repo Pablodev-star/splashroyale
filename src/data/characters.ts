@@ -1,8 +1,11 @@
 import type { Character } from '@/types/game';
 
 /**
- * PLACEHOLDER(Block 2A): stats and ultimates are first-pass values so the UI has
- * something to render. Block 2A adds sprite sheet references to each entry.
+ * PLACEHOLDER(Block 3): stats and ultimates are first-pass balance values.
+ *
+ * `colors` is no longer only UI trim — Block 2A feeds it to the sprite system as
+ * the palette (`primary` = suit, `secondary` = cap), so each character is a
+ * recolour of the shared rig. No per-character sprite sheet reference is needed.
  */
 export const CHARACTERS: Character[] = [
   {
