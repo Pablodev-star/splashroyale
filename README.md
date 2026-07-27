@@ -3,7 +3,7 @@
 PvP pixel art aquatic combat. Characters are 2D sprites that always face the
 camera inside a pseudo-3D pool. Charge your water attacks to extend their range,
 speed and damage, dive to escape at the cost of your oxygen, and unlock
-abilities as collectible cards pulled from loot boxes bought with gold.
+abilities as collectible cards pulled from card packs bought with gold.
 
 The whole game is in **English** and ships as a **static build** (GitHub Pages);
 the online layer lands later via Supabase Realtime.
@@ -35,7 +35,7 @@ to every contributor, human or AI, so PRs from different authors stay coherent.
 | **2B — Water & reactive environment**     | ⏳ Canvas2D water shipped; reactivity API stubbed         |
 | **2C — Splash animations**                | ⏳ Charge tiers reserved in the HUD (5 notches)           |
 | **3 — Controls, physics, combat**         | ⏳ Scripted `useMatchSimulation` stands in                |
-| **4 — Cards, economy, loot boxes**        | ⏳ Static data + shop shell                               |
+| **4 — Cards, economy, packs**             | ⏳ Static data + pack shop & 3D preview                   |
 | **5 — Card detail & level-up**            | ⏳ Route + layout skeleton                                |
 | **6+ — Supabase matchmaking, ranking, …** | 🔜                                                        |
 
@@ -55,7 +55,9 @@ full work queue.
   five splash tiers marked, ultimate energy tank, minimap, round clock, pause
   overlay, and a touch control layer for phones.
 - **Result screen** with counted-up gold/XP, rating delta and match summary.
-- **Loot box shop** and **card collection** shells wired to the routes Block 4
+- **Card pack shop** with a 3D pack preview (rotating wrapper, front and back
+  faces, tier-scaled effects, pull-rate table) and a **card collection** where
+  rarity drives the presentation — wired to the routes Block 4
   and Block 5 will fill in.
 - **Settings** (name, volumes, scanlines, screen shake, minimap, left-handed
   controls) persisted to `localStorage`.

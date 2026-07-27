@@ -45,7 +45,11 @@ export function MapSelectScreen({ mode, roomCode }: MapSelectScreenProps) {
               size="lg"
               icon="▶"
               emphasis
-              onClick={() => navigate('match', { mode, mapId: selected, roomCode })}
+              onClick={() =>
+                mode === 'online'
+                  ? navigate('matchmaking', { mapId: selected })
+                  : navigate('match', { mode, mapId: selected, roomCode })
+              }
             >
               {mode === 'online' ? 'Queue Up' : 'Start Match'}
             </PixelButton>

@@ -1,21 +1,31 @@
 import { useMemo, useState } from 'react';
-import type { AbilityCard, Rarity } from '@/types/game';
-import { CARDS, RARITY_LABEL, RARITY_ORDER } from '@/data/cards';
+import type { AbilityCard, CardKind, Rarity } from '@/types/game';
+import { CARDS, CARD_KIND_LABEL, RARITY_LABEL, RARITY_ORDER } from '@/data/cards';
 import { ScreenFrame } from '@/components/ui/ScreenFrame';
-import { CardTile } from '@/components/cards/CardTile';
+import { GameCard } from '@/components/cards/GameCard';
 import { PixelBadge } from '@/components/ui/PixelBadge';
-import { PixelBar } from '@/components/ui/PixelBar';
 import { useNavigation } from '@/state/NavigationContext';
 import { cn } from '@/lib/cn';
 
-type Filter = 'all' | Rarity;
+type RarityFilter = 'all' | Rarity;
+type KindFilter = 'all' | CardKind;
 
-const FILTERS: { id: Filter; label: string }[] = [
-  { id: 'all', label: 'All' },
-  ...RARITY_ORDER.map((rarity) => ({ id: rarity as Filter, label: RARITY_LABEL[rarity] })),
+const KIND_FILTERS: { id: KindFilter; label: string; glyph: string }[] = [
+  { id: 'all', label: 'All types', glyph: '◇' },
+  { id: 'attack', label: 'Attack', glyph: '≈' },
+  { id: 'defense', label: 'Defense', glyph: '◈' },
+  { id: 'utility', label: 'Utility', glyph: '✦' },
+  { id: 'ultimate', label: 'Ultimate', glyph: '★' },
 ];
 
-/** Sort owned first, then by rarity, then by name — stable and predictable. */
+const RARITY_CHIP: Record<Rarity, string> = {
+  common: 'bg-rarity-common text-abyss',
+  rare: 'bg-rarity-rare text-abyss',
+  epic: 'bg-rarity-epic text-abyss',
+  legendary: 'animate-[rainbow-fill_4s_linear_infinite] text-abyss',
+};
+
+/** Owned first, then rarest, then alphabetical — stable and predictable. */
 function sortCards(cards: AbilityCard[]): AbilityCard[] {
   return [...cards].sort((a, b) => {
     if (a.owned !== b.owned) return a.owned ? -1 : 1;
@@ -27,79 +37,129 @@ function sortCards(cards: AbilityCard[]): AbilityCard[] {
 
 export function CollectionScreen() {
   const { navigate, back } = useNavigation();
-  const [filter, setFilter] = useState<Filter>('all');
+  const [rarity, setRarity] = useState<RarityFilter>('all');
+  const [kind, setKind] = useState<KindFilter>('all');
 
   const cards = useMemo(
-    () => sortCards(CARDS.filter((card) => filter === 'all' || card.rarity === filter)),
-    [filter],
+    () =>
+      sortCards(
+        CARDS.filter(
+          (card) =>
+            (rarity === 'all' || card.rarity === rarity) && (kind === 'all' || card.kind === kind),
+        ),
+      ),
+    [rarity, kind],
   );
 
   const owned = CARDS.filter((card) => card.owned).length;
   const completion = owned / CARDS.length;
 
+  /** Owned / total per rarity, for the summary strip. */
+  const byRarity = useMemo(
+    () =>
+      RARITY_ORDER.map((value) => {
+        const all = CARDS.filter((card) => card.rarity === value);
+        return { rarity: value, owned: all.filter((card) => card.owned).length, total: all.length };
+      }),
+    [],
+  );
+
   return (
     <div className="bg-abyss relative h-full w-full overflow-hidden">
       <ScreenFrame
-        title="Card Collection"
-        subtitle="Cards you own become abilities you can equip"
+        title="Collection"
+        subtitle="Every card you own is an ability you can equip"
         onBack={back}
         aside={
           <PixelBadge tone="surf">
-            {owned}/{CARDS.length}
+            {owned}/{CARDS.length} · {Math.round(completion * 100)}%
           </PixelBadge>
         }
       >
-        <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          {/* Rarity filter tabs */}
-          <div className="flex flex-wrap gap-1.5">
-            {FILTERS.map((option) => {
-              const active = filter === option.id;
-              return (
-                <button
-                  key={option.id}
-                  type="button"
-                  onClick={() => setFilter(option.id)}
-                  aria-pressed={active}
-                  className={cn(
-                    'px-3 py-2 text-[10px] font-bold tracking-[0.14em] uppercase',
-                    'transition-transform duration-[90ms] ease-[steps(2,jump-none)]',
-                    'hover:-translate-y-[2px] focus-visible:outline-2 focus-visible:outline-offset-[6px] focus-visible:outline-foam',
-                    active
-                      ? 'bg-surf text-abyss pixel-border-active'
-                      : 'bg-ocean text-mist/70 pixel-border',
-                  )}
-                >
-                  {option.label}
-                </button>
-              );
-            })}
-          </div>
-
-          <PixelBar
-            value={completion}
-            tone="gold"
-            segments={20}
-            height="sm"
-            label="Collection"
-            readout={`${Math.round(completion * 100)}%`}
-            className="sm:max-w-[260px]"
-          />
+        {/* Per-rarity completion strip. */}
+        <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {byRarity.map((entry, index) => (
+            <button
+              key={entry.rarity}
+              type="button"
+              onClick={() => setRarity(rarity === entry.rarity ? 'all' : entry.rarity)}
+              aria-pressed={rarity === entry.rarity}
+              className={cn(
+                'bg-deep animate-rise-in flex items-center justify-between gap-2 px-2.5 py-2',
+                'transition-transform duration-[110ms] ease-[steps(3,jump-none)] hover:-translate-y-[2px]',
+                'focus-visible:outline-2 focus-visible:outline-offset-[6px] focus-visible:outline-foam',
+                rarity === entry.rarity ? 'pixel-border-active' : 'pixel-border-thin',
+              )}
+              style={{ animationDelay: `${index * 60}ms` }}
+            >
+              <span
+                className={cn(
+                  'px-1.5 py-0.5 text-[9px] font-bold tracking-[0.12em] uppercase',
+                  RARITY_CHIP[entry.rarity],
+                )}
+              >
+                {RARITY_LABEL[entry.rarity]}
+              </span>
+              <span className="text-mist/80 text-[11px] tabular-nums">
+                {entry.owned}/{entry.total}
+              </span>
+            </button>
+          ))}
         </div>
 
-        <div className="grid grid-cols-2 gap-3 pb-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-          {cards.map((card) => (
-            <CardTile
+        {/* Type filter. */}
+        <div className="mb-4 flex flex-wrap gap-1.5">
+          {KIND_FILTERS.map((option) => {
+            const active = kind === option.id;
+            return (
+              <button
+                key={option.id}
+                type="button"
+                onClick={() => setKind(option.id)}
+                aria-pressed={active}
+                className={cn(
+                  'flex items-center gap-1.5 px-3 py-2 text-[10px] font-bold tracking-[0.12em] uppercase',
+                  'transition-transform duration-[110ms] ease-[steps(3,jump-none)] hover:-translate-y-[2px]',
+                  'focus-visible:outline-2 focus-visible:outline-offset-[6px] focus-visible:outline-foam',
+                  active
+                    ? 'bg-surf text-abyss pixel-border-active'
+                    : 'bg-ocean text-mist/70 pixel-border',
+                )}
+              >
+                <span className="text-[12px] leading-none">{option.glyph}</span>
+                {option.label}
+              </button>
+            );
+          })}
+          {rarity !== 'all' && (
+            <button
+              type="button"
+              onClick={() => setRarity('all')}
+              className="bg-deep text-mist/60 pixel-border-thin px-3 py-2 text-[10px] tracking-[0.12em] uppercase hover:-translate-y-[2px]"
+            >
+              Clear {RARITY_LABEL[rarity]} ×
+            </button>
+          )}
+        </div>
+
+        {/* The grid. */}
+        <div className="grid grid-cols-2 gap-3 pb-6 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5">
+          {cards.map((card, index) => (
+            <GameCard
               key={card.id}
               card={card}
               locked={!card.owned}
+              className="animate-rise-in"
+              style={{ animationDelay: `${Math.min(index * 45, 500)}ms` }}
               onClick={() => navigate('cardDetail', { cardId: card.id })}
             />
           ))}
         </div>
 
         {cards.length === 0 && (
-          <p className="text-mist/50 py-12 text-center text-[11px] tracking-[0.12em] uppercase">
-            No cards of this rarity yet.
+          <p className="text-mist/50 py-16 text-center text-[11px] tracking-[0.12em] uppercase">
+            No {kind === 'all' ? '' : `${CARD_KIND_LABEL[kind as CardKind]} `}cards match this
+            filter.
           </p>
         )}
       </ScreenFrame>

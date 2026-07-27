@@ -44,6 +44,241 @@
   --animate-wave-scroll: wave-scroll 6s linear infinite;
   --animate-rise: rise 3.6s linear infinite;
   --animate-shake: shake 0.4s steps(4, jump-none) infinite;
+
+  /* 3D pack + card presentation */
+  --animate-spin-y: spin-y 9s linear infinite;
+  --animate-levitate: levitate 3.2s ease-in-out infinite;
+  --animate-ray-spin: ray-spin 12s linear infinite;
+  --animate-ray-spin-fast: ray-spin 7s linear reverse infinite;
+  --animate-orbit: orbit 6s linear infinite;
+  --animate-holo: holo 2.8s linear infinite;
+  --animate-rainbow-frame: rainbow-frame 4s linear infinite;
+  --animate-rainbow-text: rainbow-text 4s linear infinite;
+  --animate-aura: aura 2.2s ease-in-out infinite;
+  --animate-spark: spark 2.4s ease-in-out infinite;
+  --animate-pop-in: pop-in 320ms var(--ease-overshoot) both;
+  --animate-rise-in: rise-in 340ms var(--ease-pixel) both;
+  --animate-radar: radar 1.8s ease-out infinite;
+  --animate-scan: scan 2.6s linear infinite;
+  --animate-tilt: tilt 5s ease-in-out infinite;
+}
+
+/* ---- 3D + rarity presentation keyframes ---------------------------------- */
+
+@keyframes spin-y {
+  from {
+    transform: rotateY(0deg);
+  }
+  to {
+    transform: rotateY(360deg);
+  }
+}
+
+@keyframes levitate {
+  0%,
+  100% {
+    transform: translateY(-10px);
+  }
+  50% {
+    transform: translateY(10px);
+  }
+}
+
+@keyframes tilt {
+  0%,
+  100% {
+    transform: rotateZ(-2.5deg);
+  }
+  50% {
+    transform: rotateZ(2.5deg);
+  }
+}
+
+@keyframes ray-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes orbit {
+  from {
+    transform: rotate(0deg) translateX(var(--orbit-radius, 90px)) rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg) translateX(var(--orbit-radius, 90px)) rotate(-360deg);
+  }
+}
+
+/* Holographic band sweeping diagonally across a card face. */
+@keyframes holo {
+  0% {
+    background-position: -180% 0;
+  }
+  100% {
+    background-position: 280% 0;
+  }
+}
+
+/* Legendary: the frame cycles the full spectrum. Discrete colour stops keep it
+   pixel-safe (no hue-rotate filter, which would recolour the art too). */
+@keyframes rainbow-frame {
+  0% {
+    box-shadow:
+      0 0 0 2px var(--color-abyss),
+      0 0 0 5px #ff4d5e;
+  }
+  16% {
+    box-shadow:
+      0 0 0 2px var(--color-abyss),
+      0 0 0 5px #ffc247;
+  }
+  33% {
+    box-shadow:
+      0 0 0 2px var(--color-abyss),
+      0 0 0 5px #45e07a;
+  }
+  50% {
+    box-shadow:
+      0 0 0 2px var(--color-abyss),
+      0 0 0 5px #34b6d8;
+  }
+  66% {
+    box-shadow:
+      0 0 0 2px var(--color-abyss),
+      0 0 0 5px #4fa8ff;
+  }
+  83% {
+    box-shadow:
+      0 0 0 2px var(--color-abyss),
+      0 0 0 5px #b463ff;
+  }
+  100% {
+    box-shadow:
+      0 0 0 2px var(--color-abyss),
+      0 0 0 5px #ff4d5e;
+  }
+}
+
+@keyframes rainbow-text {
+  0% {
+    color: #ff4d5e;
+  }
+  16% {
+    color: #ffc247;
+  }
+  33% {
+    color: #45e07a;
+  }
+  50% {
+    color: #34b6d8;
+  }
+  66% {
+    color: #4fa8ff;
+  }
+  83% {
+    color: #b463ff;
+  }
+  100% {
+    color: #ff4d5e;
+  }
+}
+
+@keyframes rainbow-fill {
+  0% {
+    background-color: #ff4d5e;
+  }
+  16% {
+    background-color: #ffc247;
+  }
+  33% {
+    background-color: #45e07a;
+  }
+  50% {
+    background-color: #34b6d8;
+  }
+  66% {
+    background-color: #4fa8ff;
+  }
+  83% {
+    background-color: #b463ff;
+  }
+  100% {
+    background-color: #ff4d5e;
+  }
+}
+
+@keyframes aura {
+  0%,
+  100% {
+    opacity: 0.3;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.85;
+    transform: scale(1.06);
+  }
+}
+
+@keyframes spark {
+  0%,
+  100% {
+    opacity: 0;
+    transform: translateY(0) scale(1);
+  }
+  20% {
+    opacity: 1;
+  }
+  80% {
+    opacity: 0.6;
+  }
+  100% {
+    transform: translateY(-34px) scale(0.6);
+  }
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.86);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes radar {
+  0% {
+    opacity: 0.9;
+    transform: scale(0.35);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.6);
+  }
+}
+
+@keyframes scan {
+  0% {
+    transform: translateY(-120%);
+  }
+  100% {
+    transform: translateY(420%);
+  }
 }
 
 @keyframes bob {
@@ -347,6 +582,46 @@
   margin-inline: auto;
   padding-inline: max(1rem, env(safe-area-inset-left));
   padding-block: clamp(0.75rem, 2.5vh, 2rem);
+}
+
+/* ---- 3D helpers ---------------------------------------------------------- */
+
+@utility scene-3d {
+  perspective: 1100px;
+  perspective-origin: 50% 45%;
+}
+
+@utility preserve-3d {
+  transform-style: preserve-3d;
+}
+
+@utility backface-hidden {
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+/* Diagonal holographic sheen. Overlay only — never used as a surface fill. */
+@utility holo-sheen {
+  background-image: linear-gradient(
+    100deg,
+    transparent 38%,
+    rgb(255 255 255 / 0.5) 50%,
+    transparent 62%
+  );
+  background-size: 220% 100%;
+}
+
+/* Legendary rainbow sheen, stronger and multi-hued. */
+@utility holo-sheen-rainbow {
+  background-image: linear-gradient(
+    100deg,
+    transparent 30%,
+    rgb(255 120 200 / 0.45) 42%,
+    rgb(120 220 255 / 0.55) 50%,
+    rgb(200 255 150 / 0.45) 58%,
+    transparent 70%
+  );
+  background-size: 220% 100%;
 }
 
 /* Reduced motion: kill loops and transitions, keep everything readable. */

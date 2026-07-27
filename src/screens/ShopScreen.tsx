@@ -1,57 +1,46 @@
-import { useState } from 'react';
-import { LOOT_BOXES } from '@/data/lootBoxes';
+import { PACKS, PACK_TIER_LABEL } from '@/data/packs';
 import { RARITY_LABEL } from '@/data/cards';
-import type { LootBox } from '@/types/game';
+import type { Pack, PackTier } from '@/types/game';
 import { ScreenFrame } from '@/components/ui/ScreenFrame';
 import { PixelPanel } from '@/components/ui/PixelPanel';
-import { PixelButton } from '@/components/ui/PixelButton';
 import { PixelBadge } from '@/components/ui/PixelBadge';
 import { PixelBar } from '@/components/ui/PixelBar';
+import { Pack3D } from '@/components/packs/Pack3D';
 import { useNavigation } from '@/state/NavigationContext';
 import { usePlayer } from '@/state/PlayerContext';
 import { formatNumber } from '@/lib/format';
 import { cn } from '@/lib/cn';
 
-/** Frame colour per box accent. Static maps — Tailwind needs literal classes. */
-const ACCENT_FRAME: Record<LootBox['accent'], string> = {
-  surf: 'shadow-[0_0_0_2px_var(--color-abyss),0_0_0_5px_var(--color-surf)]',
-  gold: 'shadow-[0_0_0_2px_var(--color-abyss),0_0_0_5px_var(--color-gold)]',
-  'rarity-epic': 'shadow-[0_0_0_2px_var(--color-abyss),0_0_0_5px_var(--color-rarity-epic)]',
-  'rarity-legendary':
-    'shadow-[0_0_0_2px_var(--color-abyss),0_0_0_5px_var(--color-rarity-legendary)]',
+/** Frame + accent per tier. Static maps — Tailwind needs literal class names. */
+const TIER_FRAME: Record<PackTier, string> = {
+  standard: 'shadow-[0_0_0_2px_var(--color-abyss),0_0_0_5px_var(--color-lagoon)]',
+  premium: 'shadow-[0_0_0_2px_var(--color-abyss),0_0_0_5px_var(--color-gold)]',
+  elite: 'shadow-[0_0_0_2px_var(--color-abyss),0_0_0_5px_var(--color-rarity-epic)]',
+  mythic: 'shadow-[0_0_0_2px_var(--color-abyss),0_0_0_5px_var(--color-rarity-legendary)]',
 };
 
-const ACCENT_FILL: Record<LootBox['accent'], string> = {
-  surf: 'bg-surf',
-  gold: 'bg-gold',
-  'rarity-epic': 'bg-rarity-epic',
-  'rarity-legendary': 'bg-rarity-legendary',
+const TIER_TONE: Record<PackTier, 'neutral' | 'surf' | 'gold' | 'epic' | 'legendary'> = {
+  standard: 'neutral',
+  premium: 'gold',
+  elite: 'epic',
+  mythic: 'legendary',
 };
-
-const GUARANTEE_TONE = {
-  common: 'common',
-  rare: 'rare',
-  epic: 'epic',
-  legendary: 'legendary',
-} as const;
 
 /**
- * Loot box shop.
+ * The pack shop. Selecting a pack opens its 3D preview — buying is never one
+ * click away from the grid, it always goes through the preview first.
  *
- * PLACEHOLDER(Block 4): the boxes, their prices and the drop tables are static
- * data here, and buying is stubbed — Block 4 wires the economy, the probability
- * tables and the opening animation into these same slots.
+ * PLACEHOLDER(Block 4): inventory and prices are static data.
  */
 export function ShopScreen() {
-  const { back } = useNavigation();
+  const { navigate, back } = useNavigation();
   const { profile } = usePlayer();
-  const [pending, setPending] = useState<LootBox | null>(null);
 
   return (
     <div className="bg-abyss relative h-full w-full overflow-hidden">
       <ScreenFrame
-        title="Loot Box Shop"
-        subtitle="Spend the gold you earned in the pool"
+        title="Card Packs"
+        subtitle="Open packs to collect new abilities"
         onBack={back}
         aside={
           <PixelBadge tone="gold" icon="◆" shimmer>
@@ -60,7 +49,7 @@ export function ShopScreen() {
         }
       >
         {/* Daily gold cap — the anti-snowball rule from the design doc. */}
-        <PixelPanel title="Daily gold" variant="default" className="mb-3">
+        <PixelPanel title="Daily gold" variant="default" className="mb-4">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
             <PixelBar
               value={profile.dailyGoldEarned / profile.dailyGoldCap}
@@ -78,80 +67,86 @@ export function ShopScreen() {
           </div>
         </PixelPanel>
 
-        <div className="grid gap-3 pb-4 sm:grid-cols-2 lg:grid-cols-4">
-          {LOOT_BOXES.map((box) => {
-            const affordable = profile.gold >= box.costGold;
-            return (
-              <div key={box.id} className={cn('bg-deep flex flex-col', ACCENT_FRAME[box.accent])}>
-                <span aria-hidden className={cn('h-[3px] w-full', ACCENT_FILL[box.accent])} />
-
-                {/* Box art placeholder: a stacked pixel crate. */}
-                <div className="bg-abyss pixel-bevel-inset relative flex h-32 items-center justify-center overflow-hidden">
-                  <div className="animate-bob relative h-16 w-20">
-                    <span
-                      className={cn('absolute inset-x-0 bottom-0 h-10', ACCENT_FILL[box.accent])}
-                    />
-                    <span className="bg-abyss/40 absolute inset-x-0 bottom-4 h-[3px]" />
-                    <span className={cn('absolute inset-x-2 top-2 h-5', ACCENT_FILL[box.accent])} />
-                    <span className="bg-abyss absolute top-2 left-1/2 h-5 w-[4px] -translate-x-1/2" />
-                  </div>
-                  <span className="absolute top-1 right-1">
-                    <PixelBadge tone={GUARANTEE_TONE[box.guaranteed]}>
-                      {RARITY_LABEL[box.guaranteed]}+
-                    </PixelBadge>
-                  </span>
-                </div>
-
-                <div className="flex flex-1 flex-col gap-2 p-3">
-                  <span className="text-[12px] font-bold tracking-[0.12em] uppercase">
-                    {box.name}
-                  </span>
-                  <span className="text-mist/60 text-[10px] leading-snug">{box.description}</span>
-                  <span className="text-mist/45 text-[10px] tracking-[0.1em] uppercase">
-                    {box.cardCount} cards
-                  </span>
-                  <PixelButton
-                    variant={affordable ? 'gold' : 'secondary'}
-                    size="md"
-                    fullWidth
-                    disabled={!affordable}
-                    icon="◆"
-                    className="mt-auto"
-                    onClick={() => setPending(box)}
-                  >
-                    {formatNumber(box.costGold)}
-                  </PixelButton>
-                </div>
-              </div>
-            );
-          })}
+        <div className="grid gap-4 pb-6 sm:grid-cols-2 xl:grid-cols-4">
+          {PACKS.map((pack, index) => (
+            <PackTile
+              key={pack.id}
+              pack={pack}
+              affordable={profile.gold >= pack.costGold}
+              delayMs={index * 80}
+              onSelect={() => navigate('packPreview', { packId: pack.id })}
+            />
+          ))}
         </div>
       </ScreenFrame>
-
-      {/* Purchase confirmation — the opening animation replaces this in Block 4. */}
-      {pending && (
-        <div className="bg-abyss/85 absolute inset-0 z-20 flex items-center justify-center p-4">
-          <PixelPanel title={pending.name} variant="gold" className="w-full max-w-sm">
-            <div className="flex flex-col gap-3">
-              <p className="text-[11px] leading-snug">
-                {pending.cardCount} cards · guaranteed {RARITY_LABEL[pending.guaranteed]} or better.
-              </p>
-              <p className="text-mist/50 text-[10px] leading-snug">
-                Drop tables and the opening animation arrive with the progression block. Nothing is
-                charged yet.
-              </p>
-              <div className="flex gap-2">
-                <PixelButton variant="ghost" size="md" fullWidth onClick={() => setPending(null)}>
-                  Close
-                </PixelButton>
-                <PixelButton variant="gold" size="md" fullWidth disabled icon="◆">
-                  {formatNumber(pending.costGold)}
-                </PixelButton>
-              </div>
-            </div>
-          </PixelPanel>
-        </div>
-      )}
     </div>
+  );
+}
+
+function PackTile({
+  pack,
+  affordable,
+  delayMs,
+  onSelect,
+}: {
+  pack: Pack;
+  affordable: boolean;
+  delayMs: number;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      aria-label={`${pack.name}, ${formatNumber(pack.costGold)} gold — view pack`}
+      className={cn(
+        'group bg-deep animate-rise-in relative flex flex-col overflow-hidden text-left',
+        'transition-transform duration-[110ms] ease-[steps(3,jump-none)]',
+        'hover:-translate-y-[4px] active:translate-y-[1px]',
+        'focus-visible:outline-2 focus-visible:outline-offset-[7px] focus-visible:outline-foam',
+        TIER_FRAME[pack.tier],
+      )}
+      style={{ animationDelay: `${delayMs}ms` }}
+    >
+      {/* 3D pack sitting in its own well. The spin picks up on hover. */}
+      <div className="bg-abyss pixel-bevel-inset relative flex h-52 items-center justify-center overflow-hidden">
+        <div className="scale-[0.92] transition-transform duration-300 group-hover:scale-100">
+          <Pack3D pack={pack} size="tile" spin effects={pack.tier !== 'standard'} />
+        </div>
+        <span className="absolute top-1.5 left-1.5">
+          <PixelBadge tone={TIER_TONE[pack.tier]} shimmer={pack.tier === 'mythic'}>
+            {PACK_TIER_LABEL[pack.tier]}
+          </PixelBadge>
+        </span>
+      </div>
+
+      <div className="flex flex-1 flex-col gap-1.5 p-3">
+        <span className="text-[13px] font-bold tracking-[0.1em] uppercase">{pack.name}</span>
+        <span className="text-surf text-[10px] leading-snug">{pack.tagline}</span>
+
+        <div className="mt-1 flex flex-wrap items-center gap-1.5">
+          <PixelBadge tone="neutral">{pack.cardCount} cards</PixelBadge>
+          <PixelBadge tone={pack.guaranteed === 'legendary' ? 'legendary' : 'surf'}>
+            {RARITY_LABEL[pack.guaranteed]}+
+          </PixelBadge>
+        </div>
+
+        {/* Price strip doubles as the affordance to open the preview. */}
+        <div
+          className={cn(
+            'mt-auto flex items-center justify-between gap-2 px-2 py-2',
+            'transition-colors duration-150',
+            affordable ? 'bg-gold text-abyss group-hover:bg-[#ffd579]' : 'bg-ocean text-mist/60',
+          )}
+        >
+          <span className="text-[12px] font-bold tabular-nums">
+            ◆ {formatNumber(pack.costGold)}
+          </span>
+          <span className="text-[9px] font-bold tracking-[0.14em] uppercase">
+            {affordable ? 'View →' : 'Locked'}
+          </span>
+        </div>
+      </div>
+    </button>
   );
 }

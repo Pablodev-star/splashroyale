@@ -13,9 +13,12 @@ export type ScreenId =
   | 'mainMenu'
   | 'modeSelect'
   | 'mapSelect'
+  | 'matchmaking'
+  | 'roomLobby'
   | 'match'
   | 'result'
   | 'shop'
+  | 'packPreview'
   | 'collection'
   | 'cardDetail'
   | 'settings';
@@ -29,9 +32,12 @@ export interface RouteParams {
   mainMenu: undefined;
   modeSelect: undefined;
   mapSelect: { mode: GameMode; roomCode?: string };
+  matchmaking: { mapId: MapId };
+  roomLobby: { roomCode: string; isHost: boolean };
   match: { mode: GameMode; mapId: MapId; roomCode?: string };
   result: { mode: GameMode; mapId: MapId; outcome: MatchOutcome; roomCode?: string };
   shop: undefined;
+  packPreview: { packId: string };
   collection: undefined;
   cardDetail: { cardId: string };
   settings: undefined;
@@ -136,20 +142,55 @@ export interface AbilityCard {
   /** Copies owned toward the next level. */
   copies: number;
   copiesForNextLevel: number;
-  /** True once the player has pulled it from a loot box. */
+  /** True once the player has pulled it from a pack. */
   owned: boolean;
+  /** The one number that grows with level, shown on the detail screen. */
+  stat: {
+    label: string;
+    /** Value at level 1. */
+    base: number;
+    /** Added per level above 1. */
+    perLevel: number;
+    unit: string;
+  };
 }
 
-export interface LootBox {
+/* -------------------------------------------------------------------------- */
+/* Card packs ("sobres")                                                      */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Presentation tier of a pack. Drives how much spectacle the 3D preview gets:
+ * `standard` is clean and quiet, `mythic` is the full light-show.
+ */
+export type PackTier = 'standard' | 'premium' | 'elite' | 'mythic';
+
+/** Per-card pull rates. Must sum to 100. */
+export type RarityOdds = Record<Rarity, number>;
+
+export interface Pack {
   id: string;
   name: string;
+  /** One-line hook shown under the name. */
+  tagline: string;
   description: string;
   costGold: number;
   cardCount: number;
-  /** Rarity that is guaranteed to appear at least once. */
+  /** Rarity guaranteed to appear at least once. */
   guaranteed: Rarity;
-  /** Accent colour token name used by the shop card. */
-  accent: 'surf' | 'gold' | 'rarity-epic' | 'rarity-legendary';
+  tier: PackTier;
+  odds: RarityOdds;
+  /** Wrapper art configuration for the 3D pack faces. */
+  art: {
+    /** Foil base colour of the wrapper. */
+    base: string;
+    /** Darker shade used for bands and the back face. */
+    shade: string;
+    /** Accent used for trim, emblem and highlights. */
+    accent: string;
+    /** Emblem glyph stamped on both faces. */
+    emblem: string;
+  };
 }
 
 /* -------------------------------------------------------------------------- */

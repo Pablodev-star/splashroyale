@@ -17,6 +17,7 @@ export const CARDS: AbilityCard[] = [
     copies: 7,
     copiesForNextLevel: 12,
     owned: true,
+    stat: { label: 'Extra range', base: 15, perLevel: 4, unit: '%' },
   },
   {
     id: 'splitStream',
@@ -29,6 +30,7 @@ export const CARDS: AbilityCard[] = [
     copies: 3,
     copiesForNextLevel: 8,
     owned: true,
+    stat: { label: 'Split threshold', base: 60, perLevel: -4, unit: '% charge' },
   },
   {
     id: 'deepLungs',
@@ -41,6 +43,7 @@ export const CARDS: AbilityCard[] = [
     copies: 9,
     copiesForNextLevel: 16,
     owned: true,
+    stat: { label: 'Oxygen saved', base: 12, perLevel: 3, unit: '%' },
   },
   {
     id: 'slipstream',
@@ -53,6 +56,7 @@ export const CARDS: AbilityCard[] = [
     copies: 2,
     copiesForNextLevel: 4,
     owned: true,
+    stat: { label: 'Surface speed', base: 8, perLevel: 2, unit: '%' },
   },
   {
     id: 'undertowKick',
@@ -65,6 +69,7 @@ export const CARDS: AbilityCard[] = [
     copies: 1,
     copiesForNextLevel: 4,
     owned: true,
+    stat: { label: 'Kick force', base: 20, perLevel: 5, unit: '%' },
   },
   {
     id: 'saltCrust',
@@ -77,6 +82,7 @@ export const CARDS: AbilityCard[] = [
     copies: 0,
     copiesForNextLevel: 2,
     owned: true,
+    stat: { label: 'Damage reduced', base: 20, perLevel: 4, unit: '%' },
   },
   {
     id: 'tidalSurge',
@@ -89,6 +95,7 @@ export const CARDS: AbilityCard[] = [
     copies: 0,
     copiesForNextLevel: 1,
     owned: true,
+    stat: { label: 'Ultimate charge', base: 25, perLevel: 5, unit: '%' },
   },
   {
     id: 'chlorineBurn',
@@ -101,6 +108,7 @@ export const CARDS: AbilityCard[] = [
     copies: 0,
     copiesForNextLevel: 2,
     owned: false,
+    stat: { label: 'Blur duration', base: 1.5, perLevel: 0.3, unit: 's' },
   },
   {
     id: 'anchorHeels',
@@ -113,6 +121,7 @@ export const CARDS: AbilityCard[] = [
     copies: 0,
     copiesForNextLevel: 4,
     owned: false,
+    stat: { label: 'Knockback resist', base: 100, perLevel: 0, unit: '%' },
   },
   {
     id: 'bubbleShield',
@@ -125,6 +134,7 @@ export const CARDS: AbilityCard[] = [
     copies: 0,
     copiesForNextLevel: 4,
     owned: false,
+    stat: { label: 'Shield hits', base: 1, perLevel: 0, unit: '' },
   },
   {
     id: 'skipShot',
@@ -137,6 +147,7 @@ export const CARDS: AbilityCard[] = [
     copies: 0,
     copiesForNextLevel: 2,
     owned: false,
+    stat: { label: 'Skim distance', base: 2, perLevel: 0.5, unit: 'm' },
   },
   {
     id: 'leviathanCall',
@@ -149,6 +160,7 @@ export const CARDS: AbilityCard[] = [
     copies: 0,
     copiesForNextLevel: 1,
     owned: false,
+    stat: { label: 'Whirlpool radius', base: 4, perLevel: 0.6, unit: 'm' },
   },
 ];
 

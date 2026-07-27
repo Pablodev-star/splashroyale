@@ -106,3 +106,37 @@ they never change size (that would break pixel alignment).
 Short, punchy, slightly arcade. Uppercase for buttons and screen titles
 (`PLAY`, `SELECT MAP`). Sentence case for descriptions. Numbers are formatted
 with thin separators (`1 250`) — never locale-dependent commas.
+
+## 9. Rarity presentation
+
+Rarity is the loudest signal in the game. It escalates deliberately — if
+everything glows, nothing does.
+
+| Rarity    | Frame                                                | Art well                 | Effects                                           |
+| --------- | ---------------------------------------------------- | ------------------------ | ------------------------------------------------- |
+| Common    | Flat `rarity-common` border                          | Clean, no sheen          | None                                              |
+| Rare      | Flat `rarity-rare` border                            | Faint holo sweep (30%)   | None                                              |
+| Epic      | Flat `rarity-epic` border                            | Holo sweep (45%)         | Pulsing outer aura + 4 rising sparks              |
+| Legendary | **Frame cycles the full spectrum** (`rainbow-frame`) | Rainbow holo sweep (75%) | Rainbow aura + 7 sparks + rainbow name and banner |
+
+Rules:
+
+1. The rainbow is driven by **discrete colour-stop keyframes**, never
+   `filter: hue-rotate` — a filter would recolour the card art along with the
+   frame and blur the pixel edges.
+2. Glows live **outside** the element they belong to, on a wrapper. Putting a
+   blurred aura inside a clipped card washes over its own text.
+3. Sparks and particles stay square and hard-edged, minimum 3×3 px.
+
+## 10. Card packs in 3D
+
+Packs are real 3D objects, not images: a `preserve-3d` box with a distinct
+front and back face plus side edges, levitating and rotating on Y.
+
+- Faces stay **flat-filled with hard edges** so the pack still reads as pixel
+  art while it turns. Only the foil sheen overlay uses a gradient.
+- Spectacle scales with `PackTier`: `standard` gets nothing, `premium` adds
+  sparks, `elite` adds rotating rays and orbiting shards, `mythic` adds the
+  rainbow ray set and the strongest aura.
+- A pack tile in the shop is the _same component_ at `size="tile"` — never a
+  separate flat mock-up.
