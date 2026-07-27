@@ -11,7 +11,7 @@ always face the camera ("billboard sprites") inside a pseudo-3D aquatic space
 (pool / beach). Combat revolves around **chargeable water attacks**, a
 **kick** that launches water, and **defensive submersion** limited by an
 **oxygen bar**. Progression is delivered as **ability cards** of varying
-rarity, obtained from **loot boxes** bought with **gold** earned in combat.
+rarity, pulled from **card packs** ("sobres") bought with **gold** earned in combat.
 
 ## 2. Stack
 
@@ -51,7 +51,7 @@ src/
     maps.ts                Map definitions + water palettes
     characters.ts          Placeholder roster
     cards.ts               Placeholder ability cards (Block 4/5 extend)
-    lootBoxes.ts           Placeholder box definitions (Block 4 extends)
+    packs.ts               Card pack definitions + pull rates (Block 4 extends)
 
   state/                   React context stores. One concern per file.
     NavigationContext.tsx  Screen stack, route params, transition phase
@@ -63,6 +63,8 @@ src/
 
   components/
     ui/                    Design-system primitives. No game knowledge.
+    packs/                 3D card pack + pull-rate table
+    cards/                 The ability card itself (rarity presentation)
     water/                 Pixel water renderer (reused by Block 2B)
     brand/                 Logo / wordmark
     hud/                   In-match HUD widgets (pure, prop-driven)
@@ -89,15 +91,15 @@ src/
 Each block owns a slice of the tree and consumes the previous block through a
 narrow, typed interface.
 
-| Block                                 | Owns                                                   | Consumes                                                                            |
-| ------------------------------------- | ------------------------------------------------------ | ----------------------------------------------------------------------------------- |
-| **1 — UI** (this PR)                  | `components/**`, `screens/**`, `state/**`, `index.css` | —                                                                                   |
-| **2A — Character sprites**            | `game/sprites/**`, `public/sprites/**`                 | Nothing from UI; exposes a sprite-playback API.                                     |
-| **2B — Water & reactive environment** | `components/water/**` (extends), shaders               | Map palettes from `data/maps.ts`.                                                   |
-| **2C — Splash animations**            | `game/vfx/**`                                          | Charge value from Block 3, ripple API from 2B.                                      |
-| **3 — Controls / physics / combat**   | `game/**`                                              | Renders into the `<MatchScreen />` slot and feeds `HudState`.                       |
-| **4 — Cards, shop, loot boxes**       | `features/progression/**`                              | `ShopScreen`/`CollectionScreen` placeholders, `data/cards.ts`, `data/lootBoxes.ts`. |
-| **5 — Card detail & level-up**        | `screens/CardDetailScreen.tsx`                         | The `cardDetail` route and card types from Block 4.                                 |
+| Block                                 | Owns                                                   | Consumes                                                                               |
+| ------------------------------------- | ------------------------------------------------------ | -------------------------------------------------------------------------------------- |
+| **1 — UI** (this PR)                  | `components/**`, `screens/**`, `state/**`, `index.css` | —                                                                                      |
+| **2A — Character sprites**            | `game/sprites/**`, `public/sprites/**`                 | Nothing from UI; exposes a sprite-playback API.                                        |
+| **2B — Water & reactive environment** | `components/water/**` (extends), shaders               | Map palettes from `data/maps.ts`.                                                      |
+| **2C — Splash animations**            | `game/vfx/**`                                          | Charge value from Block 3, ripple API from 2B.                                         |
+| **3 — Controls / physics / combat**   | `game/**`                                              | Renders into the `<MatchScreen />` slot and feeds `HudState`.                          |
+| **4 — Cards, shop, packs**            | `features/progression/**`                              | `ShopScreen`/`PackPreviewScreen`/`CollectionScreen`, `data/cards.ts`, `data/packs.ts`. |
+| **5 — Card detail & level-up**        | `screens/CardDetailScreen.tsx`                         | The `cardDetail` route and card types from Block 4.                                    |
 
 ### 4.1 The HUD contract (Block 1 → Block 3)
 

@@ -3,9 +3,12 @@ import { useNavigation } from '@/state/NavigationContext';
 import { MainMenuScreen } from '@/screens/MainMenuScreen';
 import { ModeSelectScreen } from '@/screens/ModeSelectScreen';
 import { MapSelectScreen } from '@/screens/MapSelectScreen';
+import { MatchmakingScreen } from '@/screens/MatchmakingScreen';
+import { RoomLobbyScreen } from '@/screens/RoomLobbyScreen';
 import { MatchScreen } from '@/screens/MatchScreen';
 import { ResultScreen } from '@/screens/ResultScreen';
 import { ShopScreen } from '@/screens/ShopScreen';
+import { PackPreviewScreen } from '@/screens/PackPreviewScreen';
 import { CollectionScreen } from '@/screens/CollectionScreen';
 import { CardDetailScreen } from '@/screens/CardDetailScreen';
 import { SettingsScreen } from '@/screens/SettingsScreen';
@@ -33,6 +36,10 @@ function renderScreen(route: Route) {
       return <ModeSelectScreen />;
     case 'mapSelect':
       return <MapSelectScreen mode={route.params.mode} roomCode={route.params.roomCode} />;
+    case 'matchmaking':
+      return <MatchmakingScreen mapId={route.params.mapId} />;
+    case 'roomLobby':
+      return <RoomLobbyScreen roomCode={route.params.roomCode} isHost={route.params.isHost} />;
     case 'match':
       return (
         <MatchScreen
@@ -52,6 +59,8 @@ function renderScreen(route: Route) {
       );
     case 'shop':
       return <ShopScreen />;
+    case 'packPreview':
+      return <PackPreviewScreen packId={route.params.packId} />;
     case 'collection':
       return <CollectionScreen />;
     case 'cardDetail':

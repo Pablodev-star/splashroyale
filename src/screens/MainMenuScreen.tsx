@@ -82,7 +82,7 @@ export function MainMenuScreen() {
               icon="▶"
               emphasis
               fullWidth
-              onClick={() => navigate('mapSelect', { mode: 'localBots' })}
+              onClick={() => navigate('modeSelect')}
             >
               Play
             </PixelButton>
@@ -91,9 +91,9 @@ export function MainMenuScreen() {
               variant="secondary"
               icon="◈"
               fullWidth
-              onClick={() => navigate('modeSelect')}
+              onClick={() => navigate('mapSelect', { mode: 'localBots' })}
             >
-              Play Online
+              Quick match vs bots
             </PixelButton>
             <PixelButton
               size="md"
@@ -102,7 +102,7 @@ export function MainMenuScreen() {
               fullWidth
               onClick={() => navigate('shop')}
             >
-              Loot Box Shop
+              Card Packs
             </PixelButton>
             <PixelButton
               size="md"

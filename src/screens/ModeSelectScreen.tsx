@@ -1,8 +1,6 @@
-import { useState } from 'react';
-import type { GameMode } from '@/types/game';
+import { useState, type ReactNode } from 'react';
 import { WaterCanvas } from '@/components/water/WaterCanvas';
 import { ScreenFrame } from '@/components/ui/ScreenFrame';
-import { PixelPanel } from '@/components/ui/PixelPanel';
 import { PixelButton } from '@/components/ui/PixelButton';
 import { PixelBadge } from '@/components/ui/PixelBadge';
 import { PixelInput } from '@/components/ui/PixelInput';
@@ -11,182 +9,111 @@ import { usePlayer } from '@/state/PlayerContext';
 import { generateRoomCode, isValidRoomCode, normaliseRoomCode } from '@/lib/format';
 import { cn } from '@/lib/cn';
 
-interface ModeOption {
-  id: GameMode;
-  title: string;
-  glyph: string;
-  blurb: string;
-  detail: string;
-  badge?: { label: string; tone: 'surf' | 'gold' | 'neutral' };
-}
-
-const MODES: ModeOption[] = [
-  {
-    id: 'localBots',
-    title: 'Local vs Bots',
-    glyph: '▶',
-    blurb: 'Practice against the AI.',
-    detail: 'No connection needed. Bots approach, splash, dive when hurt and use their ultimate.',
-    badge: { label: 'Offline', tone: 'neutral' },
-  },
-  {
-    id: 'online',
-    title: 'Competitive Online',
-    glyph: '◈',
-    blurb: 'Ranked matchmaking by ELO.',
-    detail: 'Matched against a fighter near your rating. Wins pay gold up to the daily cap.',
-    badge: { label: 'Ranked', tone: 'gold' },
-  },
-  {
-    id: 'privateRoom',
-    title: 'Private Room',
-    glyph: '#',
-    blurb: 'Play with a friend using a code.',
-    detail: 'Create a room and share the six-character code, or join one you were given.',
-    badge: { label: 'Friends', tone: 'surf' },
-  },
-];
-
+/**
+ * Mode picker. Each mode carries its own action, so there is no hidden
+ * "selected" state to reason about — you press what you want and you are in it.
+ */
 export function ModeSelectScreen() {
   const { navigate, back } = useNavigation();
   const { profile } = usePlayer();
-  const [selected, setSelected] = useState<GameMode>('online');
   const [joinCode, setJoinCode] = useState('');
-  const [hostedCode, setHostedCode] = useState<string | null>(null);
   const [joinError, setJoinError] = useState(false);
-
-  const startMode = (mode: GameMode, roomCode?: string) => {
-    navigate('mapSelect', { mode, roomCode });
-  };
 
   const handleJoin = () => {
     if (!isValidRoomCode(joinCode)) {
       setJoinError(true);
       return;
     }
-    setJoinError(false);
     // PLACEHOLDER(Block 6): Supabase Realtime channel join happens here.
-    startMode('privateRoom', normaliseRoomCode(joinCode));
+    navigate('roomLobby', { roomCode: normaliseRoomCode(joinCode), isHost: false });
   };
 
   return (
-    <div className="relative h-full w-full overflow-hidden">
-      <WaterCanvas variant="background" pixelSize={8} fps={20} className="absolute inset-0" />
-      <div aria-hidden className="bg-abyss/80 absolute inset-0" />
+    <div className="bg-abyss relative h-full w-full overflow-hidden">
+      <WaterCanvas variant="background" pixelSize={9} fps={20} className="absolute inset-0" />
+      <div aria-hidden className="bg-abyss/85 absolute inset-0" />
 
       <div className="relative h-full">
         <ScreenFrame
-          title="Select Mode"
-          subtitle="How do you want to get wet?"
+          title="Play"
+          subtitle="Pick how you want to get wet"
           onBack={back}
-          aside={<PixelBadge tone="neutral">{profile.elo} ELO</PixelBadge>}
+          aside={
+            <PixelBadge tone="neutral" icon="▲">
+              {profile.elo} ELO
+            </PixelBadge>
+          }
         >
-          <div className="grid gap-3 md:grid-cols-3">
-            {MODES.map((mode) => {
-              const active = selected === mode.id;
-              return (
-                <button
-                  key={mode.id}
-                  type="button"
-                  onClick={() => setSelected(mode.id)}
-                  aria-pressed={active}
-                  className={cn(
-                    'bg-deep relative flex flex-col gap-2 p-4 text-left',
-                    'transition-transform duration-[90ms] ease-[steps(2,jump-none)]',
-                    'hover:-translate-y-[2px] focus-visible:outline-2 focus-visible:outline-offset-[7px] focus-visible:outline-foam',
-                    active ? 'pixel-border-active' : 'pixel-border',
-                  )}
+          <div className="grid gap-4 pb-6 lg:grid-cols-3">
+            <ModeCard
+              title="Local vs Bots"
+              glyph="▶"
+              accent="surf"
+              badge={{ label: 'Offline', tone: 'neutral' }}
+              blurb="Practice against the AI. Nothing is staked."
+              detail="Bots approach, splash, dive when hurt and fire their ultimate once it charges."
+              delayMs={0}
+              art={<BotArt />}
+              action={
+                <PixelButton
+                  variant="primary"
+                  size="lg"
+                  icon="▶"
+                  fullWidth
+                  onClick={() => navigate('mapSelect', { mode: 'localBots' })}
                 >
-                  <span className="flex items-center justify-between gap-2">
-                    <span
-                      className={cn('text-2xl leading-none', active ? 'text-surf' : 'text-mist/60')}
-                    >
-                      {mode.glyph}
-                    </span>
-                    {mode.badge && (
-                      <PixelBadge tone={mode.badge.tone}>{mode.badge.label}</PixelBadge>
-                    )}
-                  </span>
-                  <span className="text-sm font-bold tracking-[0.12em] uppercase">
-                    {mode.title}
-                  </span>
-                  <span className="text-mist/70 text-[11px] leading-snug">{mode.blurb}</span>
-                  <span className="text-mist/45 text-[10px] leading-snug">{mode.detail}</span>
-                </button>
-              );
-            })}
-          </div>
+                  Play now
+                </PixelButton>
+              }
+            />
 
-          {/* Mode-specific panel */}
-          <div className="mt-4">
-            {selected === 'privateRoom' ? (
-              <PixelPanel title="Private Room" variant="default">
-                <div className="grid gap-4 md:grid-cols-2">
-                  {/* Host */}
-                  <div className="flex flex-col gap-3">
-                    <span className="text-[10px] tracking-[0.18em] text-mist/60 uppercase">
-                      Host a room
-                    </span>
-                    {hostedCode ? (
-                      <div className="flex flex-col gap-3">
-                        <div className="bg-abyss pixel-bevel-inset px-3 py-4 text-center">
-                          <span className="text-mist/50 block text-[9px] tracking-[0.2em] uppercase">
-                            Room code
-                          </span>
-                          <span className="text-gold text-3xl tracking-[0.4em]">{hostedCode}</span>
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                          <PixelButton
-                            size="sm"
-                            variant="secondary"
-                            icon="⧉"
-                            onClick={() => navigator.clipboard?.writeText(hostedCode)}
-                          >
-                            Copy code
-                          </PixelButton>
-                          <PixelButton
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => setHostedCode(null)}
-                          >
-                            Cancel
-                          </PixelButton>
-                        </div>
-                        <p className="text-mist/50 text-[10px] leading-snug">
-                          Waiting for an opponent to join…
-                          {/* PLACEHOLDER(Block 6): Supabase presence drives this state. */}
-                        </p>
-                        <PixelButton
-                          size="md"
-                          variant="primary"
-                          fullWidth
-                          onClick={() => startMode('privateRoom', hostedCode)}
-                        >
-                          Continue
-                        </PixelButton>
-                      </div>
-                    ) : (
-                      <>
-                        <p className="text-mist/60 text-[11px] leading-snug">
-                          Generates a six-character code your friend can type in.
-                        </p>
-                        <PixelButton
-                          size="md"
-                          variant="primary"
-                          icon="+"
-                          onClick={() => setHostedCode(generateRoomCode())}
-                        >
-                          Create Room
-                        </PixelButton>
-                      </>
-                    )}
-                  </div>
+            <ModeCard
+              title="Competitive"
+              glyph="◈"
+              accent="gold"
+              badge={{ label: 'Ranked', tone: 'gold' }}
+              blurb="Matched against a fighter near your rating."
+              detail="Wins pay gold up to the daily cap and move your ELO. Losses cost rating, not gold."
+              delayMs={80}
+              art={<RankedArt elo={profile.elo} />}
+              action={
+                <PixelButton
+                  variant="gold"
+                  size="lg"
+                  icon="◈"
+                  fullWidth
+                  emphasis
+                  onClick={() => navigate('mapSelect', { mode: 'online' })}
+                >
+                  Find match
+                </PixelButton>
+              }
+            />
 
-                  {/* Join */}
-                  <div className="flex flex-col gap-3">
-                    <span className="text-[10px] tracking-[0.18em] text-mist/60 uppercase">
-                      Join a room
-                    </span>
+            <ModeCard
+              title="Private Room"
+              glyph="#"
+              accent="epic"
+              badge={{ label: 'Friends', tone: 'epic' }}
+              blurb="Play with someone you know, using a code."
+              detail="Host a room and share the six-character code, or type the one you were given."
+              delayMs={160}
+              art={<RoomArt />}
+              action={
+                <div className="flex flex-col gap-2">
+                  <PixelButton
+                    variant="secondary"
+                    size="md"
+                    icon="+"
+                    fullWidth
+                    onClick={() =>
+                      navigate('roomLobby', { roomCode: generateRoomCode(), isHost: true })
+                    }
+                  >
+                    Create room
+                  </PixelButton>
+
+                  <div className="flex items-start gap-2">
                     <PixelInput
                       value={joinCode}
                       onChange={(value) => {
@@ -198,43 +125,138 @@ export function ModeSelectScreen() {
                       maxLength={6}
                       code
                       invalid={joinError}
-                      hint={
-                        joinError
-                          ? 'Codes are 6 characters. Letters and 2-9 — no I, O, 0 or 1.'
-                          : 'Ask the host for their code.'
-                      }
+                      className="flex-1"
+                      hint={joinError ? 'Six characters. No I, O, 0 or 1.' : undefined}
                     />
-                    <PixelButton size="md" variant="secondary" icon="→" onClick={handleJoin}>
-                      Join with Code
+                    <PixelButton
+                      variant="primary"
+                      size="md"
+                      icon="→"
+                      ariaLabel="Join room with code"
+                      onClick={handleJoin}
+                    >
+                      Join
                     </PixelButton>
                   </div>
                 </div>
-              </PixelPanel>
-            ) : (
-              <PixelPanel
-                title={selected === 'online' ? 'Competitive Online' : 'Local vs Bots'}
-                variant="default"
-              >
-                <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <p className="text-mist/70 max-w-lg text-[11px] leading-snug">
-                    {selected === 'online'
-                      ? 'You will be matched with a fighter close to your rating. Pick the map you want to queue on next.'
-                      : 'Choose a map and fight a bot. Nothing is staked — gold and XP are reduced in practice.'}
-                  </p>
-                  <PixelButton
-                    size="lg"
-                    variant="primary"
-                    icon="▶"
-                    onClick={() => startMode(selected)}
-                  >
-                    Continue
-                  </PixelButton>
-                </div>
-              </PixelPanel>
-            )}
+              }
+            />
           </div>
         </ScreenFrame>
       </div>
+    </div>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+
+const ACCENT_FRAME = {
+  surf: 'shadow-[0_0_0_2px_var(--color-abyss),0_0_0_5px_var(--color-surf)]',
+  gold: 'shadow-[0_0_0_2px_var(--color-abyss),0_0_0_5px_var(--color-gold)]',
+  epic: 'shadow-[0_0_0_2px_var(--color-abyss),0_0_0_5px_var(--color-rarity-epic)]',
+} as const;
+
+function ModeCard({
+  title,
+  glyph,
+  accent,
+  badge,
+  blurb,
+  detail,
+  art,
+  action,
+  delayMs,
+}: {
+  title: string;
+  glyph: string;
+  accent: keyof typeof ACCENT_FRAME;
+  badge: { label: string; tone: 'neutral' | 'gold' | 'epic' };
+  blurb: string;
+  detail: string;
+  art: ReactNode;
+  action: ReactNode;
+  delayMs: number;
+}) {
+  return (
+    <section
+      className={cn(
+        'bg-deep animate-rise-in group flex flex-col overflow-hidden',
+        ACCENT_FRAME[accent],
+      )}
+      style={{ animationDelay: `${delayMs}ms` }}
+    >
+      {/* Animated illustration well. */}
+      <div className="bg-abyss pixel-bevel-inset relative flex h-32 items-center justify-center overflow-hidden">
+        {art}
+        <span className="absolute top-1.5 right-1.5">
+          <PixelBadge tone={badge.tone}>{badge.label}</PixelBadge>
+        </span>
+      </div>
+
+      <div className="flex flex-1 flex-col gap-2 p-4">
+        <h2 className="flex items-center gap-2 text-sm font-bold tracking-[0.12em] uppercase">
+          <span className="text-surf text-lg leading-none transition-transform duration-200 group-hover:scale-125">
+            {glyph}
+          </span>
+          {title}
+        </h2>
+        <p className="text-mist/75 text-[11px] leading-snug">{blurb}</p>
+        <p className="text-mist/45 text-[10px] leading-snug">{detail}</p>
+        <div className="mt-auto pt-2">{action}</div>
+      </div>
+    </section>
+  );
+}
+
+/* Small animated illustrations — pure CSS, no assets. */
+
+function BotArt() {
+  return (
+    <div aria-hidden className="relative flex items-end gap-6">
+      {[0, 1].map((index) => (
+        <span
+          key={index}
+          className="animate-bob relative block"
+          style={{ animationDelay: `${index * 0.6}s` }}
+        >
+          <span className="mx-auto block h-4 w-4 bg-[#f2c9a0]" />
+          <span
+            className="block h-5 w-7"
+            style={{ background: index === 0 ? '#34b6d8' : '#ff4d5e' }}
+          />
+          <span className="bg-foam mt-[2px] block h-[2px] w-9 -translate-x-1" />
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function RankedArt({ elo }: { elo: number }) {
+  return (
+    <div aria-hidden className="relative flex flex-col items-center gap-1.5">
+      <span className="animate-levitate text-gold text-4xl leading-none">◈</span>
+      <span className="text-gold/80 text-[11px] tabular-nums">{elo}</span>
+      <span className="flex gap-1">
+        {[0, 1, 2, 3, 4].map((index) => (
+          <span key={index} className={cn('h-1.5 w-4', index < 3 ? 'bg-gold' : 'bg-ocean')} />
+        ))}
+      </span>
+    </div>
+  );
+}
+
+function RoomArt() {
+  return (
+    <div aria-hidden className="relative flex items-center gap-2">
+      {['A', '?', '#'].map((char, index) => (
+        <span
+          key={index}
+          className="bg-ocean text-rarity-epic pixel-border-thin animate-bob flex h-9 w-8 items-center justify-center text-sm font-bold"
+          style={{ animationDelay: `${index * 0.25}s` }}
+        >
+          {char}
+        </span>
+      ))}
     </div>
   );
 }
