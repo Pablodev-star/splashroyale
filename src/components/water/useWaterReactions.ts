@@ -29,6 +29,13 @@ interface Tracked {
 }
 
 /**
+ * Ceiling on ripples one actor can shed in a single update. Without it, a
+ * respawn or a tab regaining focus registers as one enormous step and would
+ * carpet the whole path in foam.
+ */
+const MAX_WAKE_PER_FRAME = 4;
+
+/**
  * Makes the water answer back (Block 2B).
  *
  * `WaterCanvas` has always exposed `spawnRipple`, but nothing ever called it —
@@ -78,12 +85,32 @@ export function useWaterReactions(
 
       const dx = actor.x - previous.x;
       const dy = actor.y - previous.y;
-      previous.travelled += Math.hypot(dx, dy);
+      const step = Math.hypot(dx, dy);
 
-      if (previous.travelled >= wakeSpacing) {
-        previous.travelled = 0;
+      if (step > 0) {
         // A submerged swimmer only pushes a faint swell to the surface.
-        handle.spawnRipple(actor.x, actor.y, (submerged ? 0.14 : 0.28) * intensity);
+        const strength = (submerged ? 0.14 : 0.28) * intensity;
+        // Shed one ripple per whole `wakeSpacing` crossed, positioned along the
+        // segment actually travelled, and carry the remainder into the next
+        // frame. Emitting once per frame and resetting the accumulator instead
+        // would thin the trail out whenever a frame ran long — which is exactly
+        // the frame-rate dependence measuring by distance is meant to avoid.
+        let due = wakeSpacing - previous.travelled;
+        let emitted = 0;
+
+        while (due <= step && emitted < MAX_WAKE_PER_FRAME) {
+          const fraction = due / step;
+          handle.spawnRipple(previous.x + dx * fraction, previous.y + dy * fraction, strength);
+          due += wakeSpacing;
+          emitted += 1;
+        }
+
+        previous.travelled =
+          emitted === MAX_WAKE_PER_FRAME
+            ? // A jump this large is a respawn or a teleport, not swimming.
+              // Filling it in would carpet the pool, so resync instead.
+              0
+            : step - (due - wakeSpacing);
       }
 
       previous.x = actor.x;
