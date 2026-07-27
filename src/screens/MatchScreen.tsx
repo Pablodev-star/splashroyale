@@ -74,9 +74,9 @@ export function MatchScreen({ mode, mapId, roomCode }: MatchScreenProps) {
         mode,
         MATCH_DURATION_MS - hud.timeRemainingMs,
       );
-      navigate('result', { mode, mapId, outcome }, 'scale');
+      navigate('result', { mode, mapId, outcome, roomCode }, 'scale');
     },
-    [hud.timeRemainingMs, mapId, mode, navigate],
+    [hud.timeRemainingMs, mapId, mode, navigate, roomCode],
   );
 
   useEffect(() => {

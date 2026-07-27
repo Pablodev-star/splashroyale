@@ -47,6 +47,7 @@ function renderScreen(route: Route) {
           mode={route.params.mode}
           mapId={route.params.mapId}
           outcome={route.params.outcome}
+          roomCode={route.params.roomCode}
         />
       );
     case 'shop':

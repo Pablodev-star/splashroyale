@@ -8,7 +8,7 @@ import { PixelBadge } from '@/components/ui/PixelBadge';
 import { PixelInput } from '@/components/ui/PixelInput';
 import { useNavigation } from '@/state/NavigationContext';
 import { usePlayer } from '@/state/PlayerContext';
-import { generateRoomCode, isValidRoomCode } from '@/lib/format';
+import { generateRoomCode, isValidRoomCode, normaliseRoomCode } from '@/lib/format';
 import { cn } from '@/lib/cn';
 
 interface ModeOption {
@@ -66,7 +66,7 @@ export function ModeSelectScreen() {
     }
     setJoinError(false);
     // PLACEHOLDER(Block 6): Supabase Realtime channel join happens here.
-    startMode('privateRoom', joinCode.trim().toUpperCase());
+    startMode('privateRoom', normaliseRoomCode(joinCode));
   };
 
   return (
@@ -190,7 +190,7 @@ export function ModeSelectScreen() {
                     <PixelInput
                       value={joinCode}
                       onChange={(value) => {
-                        setJoinCode(value);
+                        setJoinCode(normaliseRoomCode(value));
                         setJoinError(false);
                       }}
                       onSubmit={handleJoin}
@@ -200,7 +200,7 @@ export function ModeSelectScreen() {
                       invalid={joinError}
                       hint={
                         joinError
-                          ? 'Codes are 6 characters, letters and numbers.'
+                          ? 'Codes are 6 characters. Letters and 2-9 — no I, O, 0 or 1.'
                           : 'Ask the host for their code.'
                       }
                     />

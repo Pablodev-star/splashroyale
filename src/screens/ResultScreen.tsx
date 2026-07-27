@@ -14,9 +14,11 @@ export interface ResultScreenProps {
   mode: GameMode;
   mapId: MapId;
   outcome: MatchOutcome;
+  /** Carried through so a private-room rematch stays in the same room. */
+  roomCode?: string;
 }
 
-export function ResultScreen({ mode, mapId, outcome }: ResultScreenProps) {
+export function ResultScreen({ mode, mapId, outcome, roomCode }: ResultScreenProps) {
   const { navigate, home } = useNavigation();
   const map = MAP_BY_ID[mapId];
 
@@ -138,7 +140,7 @@ export function ResultScreen({ mode, mapId, outcome }: ResultScreenProps) {
             variant="primary"
             size="lg"
             icon="↻"
-            onClick={() => navigate('match', { mode, mapId }, 'fade')}
+            onClick={() => navigate('match', { mode, mapId, roomCode }, 'fade')}
           >
             Rematch
           </PixelButton>
@@ -146,7 +148,7 @@ export function ResultScreen({ mode, mapId, outcome }: ResultScreenProps) {
             variant="secondary"
             size="md"
             icon="▤"
-            onClick={() => navigate('mapSelect', { mode })}
+            onClick={() => navigate('mapSelect', { mode, roomCode })}
           >
             Change Map
           </PixelButton>

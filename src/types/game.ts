@@ -30,7 +30,7 @@ export interface RouteParams {
   modeSelect: undefined;
   mapSelect: { mode: GameMode; roomCode?: string };
   match: { mode: GameMode; mapId: MapId; roomCode?: string };
-  result: { mode: GameMode; mapId: MapId; outcome: MatchOutcome };
+  result: { mode: GameMode; mapId: MapId; outcome: MatchOutcome; roomCode?: string };
   shop: undefined;
   collection: undefined;
   cardDetail: { cardId: string };

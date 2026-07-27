@@ -16,17 +16,38 @@ export function formatDuration(ms: number): string {
   return `${minutes}:${seconds.toString().padStart(2, '0')}`;
 }
 
-/** Six-character room code, unambiguous alphabet (no O/0/I/1). */
+/**
+ * Room code alphabet: unambiguous when read aloud or off a screen — no O/0 and
+ * no I/1. Generation and validation share it so they can never drift apart.
+ */
+export const ROOM_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+export const ROOM_CODE_LENGTH = 6;
+
+/** Six-character room code drawn from {@link ROOM_CODE_ALPHABET}. */
 export function generateRoomCode(): string {
-  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let code = '';
-  for (let index = 0; index < 6; index += 1) {
-    code += alphabet[Math.floor(Math.random() * alphabet.length)];
+  for (let index = 0; index < ROOM_CODE_LENGTH; index += 1) {
+    code += ROOM_CODE_ALPHABET[Math.floor(Math.random() * ROOM_CODE_ALPHABET.length)];
   }
   return code;
 }
 
-/** True when a typed room code has the right shape. */
+/** Normalises a typed room code: trimmed, uppercase, unsupported chars dropped. */
+export function normaliseRoomCode(code: string): string {
+  return code
+    .trim()
+    .toUpperCase()
+    .split('')
+    .filter((character) => ROOM_CODE_ALPHABET.includes(character))
+    .join('')
+    .slice(0, ROOM_CODE_LENGTH);
+}
+
+/** True when a typed code could have been produced by {@link generateRoomCode}. */
 export function isValidRoomCode(code: string): boolean {
-  return /^[A-Z2-9]{6}$/.test(code.trim().toUpperCase());
+  const normalised = code.trim().toUpperCase();
+  return (
+    normalised.length === ROOM_CODE_LENGTH &&
+    normalised.split('').every((character) => ROOM_CODE_ALPHABET.includes(character))
+  );
 }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useImperativeHandle, useRef, type Ref } from 'react';
+import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react';
 import { useAnimationFrame } from '@/hooks/useAnimationFrame';
 import { useInView } from '@/hooks/useInView';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
@@ -49,6 +49,9 @@ export function WaterCanvas({
   const timeRef = useRef(0);
   const nextAmbientRef = useRef(0.6);
   const wrapperRef = useRef<HTMLDivElement | null>(null);
+  // Bumped every time the buffer is reallocated, so the paused/reduced-motion
+  // path knows it has a blank bitmap to repaint.
+  const [bufferGeneration, setBufferGeneration] = useState(0);
 
   const inView = useInView(wrapperRef);
   const reducedMotion = useReducedMotion();
@@ -89,10 +92,12 @@ export function WaterCanvas({
     }
 
     if (canvas.width !== width || canvas.height !== height) {
+      // Assigning width/height also clears the bitmap.
       canvas.width = width;
       canvas.height = height;
       const context = canvas.getContext('2d');
       imageRef.current = context?.createImageData(width, height) ?? null;
+      setBufferGeneration((generation) => generation + 1);
     }
   }, [pixelSize]);
 
@@ -142,12 +147,14 @@ export function WaterCanvas({
   );
 
   // Reduced motion / offscreen: draw a single static frame instead of looping.
+  // Depends on `bufferGeneration` so a resize while paused repaints the fresh
+  // (blank) bitmap instead of leaving the canvas empty until remount.
   const paused = reducedMotion || !inView;
   useEffect(() => {
     if (!paused) return;
-    const raf = requestAnimationFrame(() => draw(0));
+    const raf = requestAnimationFrame(() => draw(timeRef.current));
     return () => cancelAnimationFrame(raf);
-  }, [paused, draw]);
+  }, [paused, draw, bufferGeneration]);
 
   useAnimationFrame(draw, { fps, paused });
 
