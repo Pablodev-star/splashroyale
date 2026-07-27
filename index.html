@@ -4,6 +4,13 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <meta name="theme-color" content="#04121f" />
+    <!-- Every deploy renames the built JS/CSS (content hash), so a cached copy of
+         this shell can point at files that no longer exist on the next deploy —
+         the script tag then fails silently and the page never mounts, just a
+         blank white screen. Tell the browser to always revalidate this document. -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
     <title>Splash Royale</title>
     <meta
       name="description"
