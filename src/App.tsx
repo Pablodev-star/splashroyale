@@ -2,17 +2,20 @@ import { NavigationProvider } from '@/state/NavigationContext';
 import { SettingsProvider, useSettings } from '@/state/SettingsContext';
 import { PlayerProvider } from '@/state/PlayerContext';
 import { ScreenRouter } from '@/app/ScreenRouter';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { cn } from '@/lib/cn';
 
 export function App() {
   return (
-    <SettingsProvider>
-      <PlayerProvider>
-        <NavigationProvider>
-          <Stage />
-        </NavigationProvider>
-      </PlayerProvider>
-    </SettingsProvider>
+    <ErrorBoundary>
+      <SettingsProvider>
+        <PlayerProvider>
+          <NavigationProvider>
+            <Stage />
+          </NavigationProvider>
+        </PlayerProvider>
+      </SettingsProvider>
+    </ErrorBoundary>
   );
 }
 
