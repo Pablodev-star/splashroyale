@@ -8,8 +8,12 @@ import type { GameMap, WaterPalette } from '@/types/game';
 
 export interface WaterCanvasHandle {
   /**
-   * Spawn a ripple at normalised canvas coordinates (0..1).
-   * Block 2B/2C call this on splash impacts, dives and surfacing.
+   * Spawn a ripple at normalised canvas coordinates (0..1). `strength` scales
+   * its radius, ring width and life — not its brightness.
+   *
+   * Prefer `useWaterReactions` for anything that moves: it derives wake and
+   * dive events from actor positions. Call this directly for one-off impacts
+   * (Block 2C splashes, projectiles landing).
    */
   spawnRipple: (nx: number, ny: number, strength?: number) => void;
 }
