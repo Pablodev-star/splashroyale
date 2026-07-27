@@ -8,7 +8,7 @@
 export { SpriteView, type SpriteViewProps } from './SpriteView';
 export { useSpriteAnimation, type SpriteAnimationOptions } from './useSpriteAnimation';
 export { getSpriteSheet, type SpriteSheet } from './atlas';
-export { ANIMATIONS, ANIMATION_IDS, animationDurationMs } from './animations';
+export { ANIMATIONS, ANIMATION_IDS, animationDurationMs, restFrame } from './animations';
 export { validateRig, type SpritePalette } from './rig';
 export {
   CELL_HEIGHT,

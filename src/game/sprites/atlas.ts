@@ -112,7 +112,12 @@ function bake(palette: SpritePalette): SpriteSheet {
 
   for (const orientation of ORIENTATIONS) {
     const parts = RIG[artOrientation(orientation)];
-    const mirror = orientation === 'right';
+    // Body art: the authored `left` rig faces left, so `right` is its mirror.
+    const mirrorBody = orientation === 'right';
+    // Effects are authored in front of a *right*-facing fighter (at the cell's
+    // right edge), so they mirror on the opposite orientation to the body. Using
+    // one flag for both put the orb behind the fighter in *both* side views.
+    const mirrorFx = orientation === 'left';
 
     for (const animation of ANIMATION_ORDER) {
       const row = rowIndex(orientation, animation);
@@ -126,11 +131,11 @@ function bake(palette: SpritePalette): SpriteSheet {
           if (!art) continue;
           // `bubble` only reads underwater, where the body is hidden.
           if (partId === 'bubble' && !frame.parts?.torso?.hidden) continue;
-          drawPart(ctx, art, frame.parts?.[partId], colors, originX, originY, mirror);
+          drawPart(ctx, art, frame.parts?.[partId], colors, originX, originY, mirrorBody);
         }
 
         for (const rect of frame.fx ?? []) {
-          const x = mirror ? CELL_WIDTH - (rect.x + rect.w) : rect.x;
+          const x = mirrorFx ? CELL_WIDTH - (rect.x + rect.w) : rect.x;
           ctx.fillStyle = colors[rect.color];
           ctx.fillRect(originX + x, originY + rect.y, rect.w, rect.h);
         }
@@ -143,10 +148,19 @@ function bake(palette: SpritePalette): SpriteSheet {
     width: ATLAS_WIDTH,
     height: ATLAS_HEIGHT,
     frameCount: (animation) => ANIMATIONS[animation].frames.length,
-    frameOrigin: (orientation, animation, frame) => ({
-      x: Math.min(frame, MAX_FRAMES - 1) * CELL_WIDTH,
-      y: rowIndex(orientation, animation) * CELL_HEIGHT,
-    }),
+    // Clamp to the frames this animation actually has, not to the atlas width.
+    // Animations have different lengths, so a frame index left over from the
+    // previous animation (state resets a render later than the prop changes)
+    // would otherwise address a never-baked, fully transparent cell and blink
+    // the fighter out for one paint — visible on every surface-from-dive.
+    frameOrigin: (orientation, animation, frame) => {
+      const last = ANIMATIONS[animation].frames.length - 1;
+      const index = Math.min(Math.max(frame, 0), last);
+      return {
+        x: index * CELL_WIDTH,
+        y: rowIndex(orientation, animation) * CELL_HEIGHT,
+      };
+    },
   };
 }
 

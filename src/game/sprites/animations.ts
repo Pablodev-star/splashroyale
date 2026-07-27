@@ -9,9 +9,11 @@ import type { AnimationId, SpriteAnimation, SpriteFrame } from './types';
  * offset is a whole number of pixels: sub-pixel motion would break the pixel
  * grid the whole art style depends on (STYLEGUIDE §3.4).
  *
- * Directional effects (the thrown water orb, the kick splash) are authored
- * pointing right; `right` mirrors `left` at bake time, so they follow the facing
- * automatically.
+ * Directional effects (the thrown water orb, the kick splash) are authored at
+ * the cell's right edge — in front of a *right*-facing fighter. The authored
+ * body art faces left, so the atlas mirrors effects on the opposite orientation
+ * to the body (see `mirrorFx` in `atlas.ts`); sharing one mirror flag put the
+ * orb behind the fighter in both side views.
  */
 
 /** Frame helper — keeps the tables readable. */
@@ -307,4 +309,18 @@ export const ANIMATION_IDS = Object.keys(ANIMATIONS) as AnimationId[];
 /** Total run time of one pass; useful for scheduling one-shot animations. */
 export function animationDurationMs(id: AnimationId): number {
   return ANIMATIONS[id].frames.reduce((total, f) => total + f.durationMs, 0);
+}
+
+/**
+ * The frame that represents an animation when it is not playing — what to show
+ * under `prefers-reduced-motion`.
+ *
+ * A non-looping animation's resting state is the frame it *holds*, not its first
+ * one. `dive` is the case that matters: frame 0 is the above-water wind-up, so
+ * showing it would leave a submerged fighter standing above the surface while
+ * the HUD reports them underwater.
+ */
+export function restFrame(id: AnimationId): number {
+  const spec = ANIMATIONS[id];
+  return spec.loop ? 0 : spec.frames.length - 1;
 }

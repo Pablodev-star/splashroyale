@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useAnimationFrame } from '@/hooks/useAnimationFrame';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
-import { ANIMATIONS } from './animations';
+import { ANIMATIONS, restFrame } from './animations';
 import type { AnimationId } from './types';
 
 export interface SpriteAnimationOptions {
@@ -88,6 +88,6 @@ export function useSpriteAnimation({
     { fps: 30, paused: paused || reducedMotion },
   );
 
-  // Reduced motion: show a single representative frame, never animate.
-  return reducedMotion ? 0 : frame;
+  // Reduced motion: hold the animation's resting frame, never animate.
+  return reducedMotion ? restFrame(animation) : frame;
 }
