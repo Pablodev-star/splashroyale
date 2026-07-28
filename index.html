@@ -4,13 +4,15 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <meta name="theme-color" content="#04121f" />
-    <!-- Every deploy renames the built JS/CSS (content hash), so a cached copy of
-         this shell can point at files that no longer exist on the next deploy —
-         the script tag then fails silently and the page never mounts, just a
-         blank white screen. Tell the browser to always revalidate this document. -->
+    <!-- The production build inlines all JS and CSS into this file (see
+         vite.config.ts), so there are no separate assets that a cached copy of
+         this document could reference after they were replaced — the cause of a
+         recurring blank white page. These hints ask for a fresh copy anyway;
+         they are not load-bearing, since any cached version is a whole app. -->
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' shape-rendering='crispEdges'><rect width='16' height='16' fill='%2304121f'/><path d='M1 5h3v2H1zM4 4h3v2H4zM7 5h3v2H7zM10 4h3v2h-3zM13 5h2v2h-2z' fill='%231878a8'/><path d='M1 8h3v2H1zM4 7h3v2H4zM7 8h3v2H7zM10 7h3v2h-3zM13 8h2v2h-2z' fill='%2334b6d8'/><path d='M1 11h3v2H1zM4 10h3v2H4zM7 11h3v2H7zM10 10h3v2h-3zM13 11h2v2h-2z' fill='%239ef0f5'/></svg>" />
     <title>Splash Royale</title>
     <meta
       name="description"

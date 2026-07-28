@@ -3,6 +3,7 @@ import type { HudState, MinimapEntity } from '@/types/game';
 import { useAnimationFrame } from '@/hooks/useAnimationFrame';
 import type { ArenaFighter } from './ArenaView';
 import type { AnimationId } from '@/game/sprites';
+import { MIN_SPLASH_CHARGE, splashTierFor, type SplashEvent } from '@/game/vfx';
 import { CHARACTERS } from '@/data/characters';
 
 /**
@@ -30,7 +31,18 @@ export interface MatchSimulationResult {
   hud: HudState;
   fighters: ArenaFighter[];
   projectiles: MinimapEntity[];
+  /**
+   * Splashes thrown since the match started, most recent last, capped to a short
+   * window. Block 3 produces these from real attack releases; the shape is the
+   * hand-off point for Block 2C (ARCHITECTURE.md §4.3).
+   */
+  splashes: SplashEvent[];
   finished: boolean;
+}
+
+/** Scripted circling path. Shared so a release lands where the fighter is. */
+function selfPositionAt(t: number) {
+  return { x: 0.34 + Math.sin(t * 0.6) * 0.1, y: 0.62 + Math.sin(t * 0.9) * 0.12 };
 }
 
 const OXYGEN_DRAIN_PER_SEC = 0.14;
@@ -59,6 +71,9 @@ export function useMatchSimulation({
     selfUltimate: 0.35,
     opponentUltimate: 0.2,
     opponentSubmerged: false,
+    wasCharging: false,
+    nextSplashId: 1,
+    splashes: [] as SplashEvent[],
   });
 
   const [, forceRender] = useState(0);
@@ -70,6 +85,23 @@ export function useMatchSimulation({
       // and would otherwise rewind the match timer.
       state.elapsed = Math.min(state.elapsed + delta, durationMs / 1000);
       const elapsed = state.elapsed;
+
+      // Releasing a built-up charge throws a splash, sized by how full the meter
+      // was at the moment of release — read before the decay below consumes it.
+      if (state.wasCharging && !charging && state.selfCharge >= MIN_SPLASH_CHARGE) {
+        const at = selfPositionAt(state.elapsed);
+        state.splashes = [
+          ...state.splashes,
+          {
+            id: state.nextSplashId,
+            x: at.x,
+            y: at.y,
+            tier: splashTierFor(state.selfCharge),
+          },
+        ].slice(-8);
+        state.nextSplashId += 1;
+      }
+      state.wasCharging = charging;
 
       // Charge builds while the attack input is held and the player is above water.
       state.selfCharge =
@@ -107,8 +139,7 @@ export function useMatchSimulation({
   const t = state.elapsed;
 
   // Scripted movement: two fighters circling each other in the pool.
-  const selfX = 0.34 + Math.sin(t * 0.6) * 0.1;
-  const selfY = 0.62 + Math.sin(t * 0.9) * 0.12;
+  const { x: selfX, y: selfY } = selfPositionAt(t);
   const opponentX = 0.66 + Math.cos(t * 0.5) * 0.1;
   const opponentY = 0.5 + Math.cos(t * 0.8) * 0.14;
 
@@ -201,6 +232,7 @@ export function useMatchSimulation({
     hud,
     fighters,
     projectiles,
+    splashes: state.splashes,
     finished: hud.timeRemainingMs <= 0,
   };
 }
