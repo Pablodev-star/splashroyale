@@ -1,3 +1,4 @@
+import { TIER_BOUNDARIES, TIER_LABEL, splashTierFor } from '@/game/vfx';
 import { cn } from '@/lib/cn';
 
 export interface ChargeMeterProps {
@@ -11,17 +12,16 @@ export interface ChargeMeterProps {
 /**
  * Attack charge meter.
  *
- * The five notches map 1:1 to the five splash tiers defined in Block 2C, so the
- * player can read which splash their release will produce. Tier boundaries live
- * here for now and move to the shared VFX table when Block 2C lands.
+ * The five notches map 1:1 to the five splash tiers, so the player can read
+ * which splash their release will produce. Boundaries and the tier lookup come
+ * from the Block 2C table, so the notch shown and the splash thrown cannot drift.
  */
-const TIER_BOUNDARIES = [0.2, 0.4, 0.6, 0.8] as const;
 const SEGMENTS = 25;
 
 export function ChargeMeter({ value, charging, className }: ChargeMeterProps) {
   const clamped = Math.max(0, Math.min(1, value));
   const filled = Math.round(clamped * SEGMENTS);
-  const tier = TIER_BOUNDARIES.filter((boundary) => clamped >= boundary).length + 1;
+  const tier = splashTierFor(clamped);
   const full = clamped >= 1;
 
   return (
@@ -35,7 +35,7 @@ export function ChargeMeter({ value, charging, className }: ChargeMeterProps) {
       <div className="mb-1 flex items-baseline justify-between text-[9px] tracking-[0.2em] uppercase">
         <span className="text-mist/70">Charge</span>
         <span className={cn('tabular-nums', full ? 'text-danger animate-blink' : 'text-charge')}>
-          {full ? 'MAX' : `TIER ${tier}`}
+          {full ? `MAX · ${TIER_LABEL[tier]}` : TIER_LABEL[tier]}
         </span>
       </div>
 

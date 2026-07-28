@@ -36,7 +36,7 @@ export function MatchScreen({ mode, mapId, roomCode }: MatchScreenProps) {
   const [charging, setCharging] = useState(false);
   const [submerged, setSubmerged] = useState(false);
 
-  const { hud, fighters, projectiles, finished } = useMatchSimulation({
+  const { hud, fighters, projectiles, splashes, finished } = useMatchSimulation({
     playerName: settings.playerName,
     opponentName: mode === 'localBots' ? 'Bot Alpha' : 'Challenger',
     durationMs: MATCH_DURATION_MS,
@@ -89,6 +89,7 @@ export function MatchScreen({ mode, mapId, roomCode }: MatchScreenProps) {
         map={map}
         fighters={fighters}
         projectiles={projectiles}
+        splashes={splashes}
         className="absolute inset-0"
       />
 

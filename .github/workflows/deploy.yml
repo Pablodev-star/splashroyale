@@ -25,29 +25,24 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
-      - name: Keep the previous deploy's hashed assets reachable
-        # Vite content-hashes JS/CSS filenames, and each deploy otherwise replaces
-        # the last one's files outright. A browser holding a cached index.html from
-        # the previous deploy still points at those old filenames — if they 404,
-        # the app never mounts and the page is just blank, with no visible error.
-        # GitHub Pages serves static files as-is with no custom response-header
-        # support, so the fix is structural: fetch whatever the live site's
-        # previous index.html referenced and carry those specific files forward
-        # into this build's output, alongside the new ones. Best-effort — a site
-        # that isn't live yet (first deploy) or a network hiccup just no-ops.
+      - name: Check the build really is one self-contained file
+        # The blank-page bug this guards against was caused by a cached
+        # index.html referencing hashed asset files a later deploy had replaced.
+        # The build now inlines everything, so if an assets/ directory ever
+        # reappears (a plugin ordering change, a new asset type Vite decides to
+        # emit separately) the guarantee is silently gone. Fail loudly instead.
         run: |
-          set -u
-          site_url="https://pablodev-star.github.io/splashroyale/"
-          prev_html="$(curl -fsSL "$site_url" 2>/dev/null || true)"
-          if [ -n "$prev_html" ]; then
-            echo "$prev_html" | grep -oE '\./assets/[A-Za-z0-9._-]+\.(js|css)' | sort -u | while read -r asset; do
-              dest="dist/${asset#./}"
-              if [ ! -f "$dest" ]; then
-                mkdir -p "$(dirname "$dest")"
-                curl -fsSL "${site_url}${asset#./}" -o "$dest" || rm -f "$dest"
-              fi
-            done
+          set -eu
+          if [ ! -f dist/index.html ]; then
+            echo "dist/index.html missing"; exit 1
           fi
+          extra="$(find dist -type f ! -name index.html)"
+          if [ -n "$extra" ]; then
+            echo "Build emitted files outside index.html; single-file guarantee broken:"
+            echo "$extra"
+            exit 1
+          fi
+          echo "OK: dist is a single self-contained index.html ($(wc -c < dist/index.html) bytes)"
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

@@ -63,6 +63,7 @@ src/
 
   game/                    Engine-side code. Never imports from screens/.
     sprites/               Pixel rig, keyframed animations, atlas bake, playback
+    vfx/                   Splash tiers, droplet sim, splash canvas + events
 
   components/
     ui/                    Design-system primitives. No game knowledge.
@@ -99,7 +100,7 @@ narrow, typed interface.
 | **1 — UI** (done)                     | `components/**`, `screens/**`, `state/**`, `index.css` | —                                                                                      |
 | **2A — Character sprites** (done)     | `game/sprites/**`                                      | Character palettes from `data/characters.ts`; exposes a sprite-playback API.            |
 | **2B — Water & reactive environment** (done) | `components/water/**`                           | Map palettes from `data/maps.ts`; actor positions from the arena.                        |
-| **2C — Splash animations**            | `game/vfx/**`                                          | Charge value from Block 3, ripple API from 2B.                                         |
+| **2C — Splash animations** (done)     | `game/vfx/**`                                          | Charge value from Block 3, ripple API from 2B.                                          |
 | **3 — Controls / physics / combat**   | `game/**`                                              | Renders into the `<MatchScreen />` slot and feeds `HudState`.                          |
 | **4 — Cards, shop, packs**            | `features/progression/**`                              | `ShopScreen`/`PackPreviewScreen`/`CollectionScreen`, `data/cards.ts`, `data/packs.ts`. |
 | **5 — Card detail & level-up**        | `screens/CardDetailScreen.tsx`                         | The `cardDetail` route and card types from Block 4.                                    |
@@ -162,7 +163,37 @@ Cost is bounded by rejecting pixels outside each ripple's bounding box before an
 `sqrt`. Measured on a full 44k-pixel arena buffer: 16% of the 24fps frame budget
 with no ripples, 22% with thirty live.
 
-### 4.3 The HUD contract (Block 1 → Block 3)
+### 4.3 The splash contract (Block 2C → Block 3)
+
+Block 3 reports splashes as data; the arena plays them:
+
+```ts
+// From the engine, when a charged attack is released:
+{ id: 7, x: 0.42, y: 0.61, tier: splashTierFor(charge) } // SplashEvent, arena space
+```
+
+`useSplashEvents` plays each `id` exactly once, driving **both** the droplet burst
+and the 2B surface ripple from the same `SPLASH_TIERS` entry — so a tier 5 hit
+throws more water *and* disturbs the surface harder without the two being tuned
+apart. Two things to respect:
+
+- **`id` must be unique and stable.** The event list is re-rendered every frame;
+  the hook dedupes on `id`, and a changing id means a fresh burst per frame.
+- **Emit in arena space.** `ArenaView` rebases onto the canvas (`WATER_TOP`), the
+  same as water actors — otherwise a splash lands at a different height than the
+  fighter that threw it.
+
+`SPLASH_TIERS` in `game/vfx/splashTiers.ts` is the **single** definition of the
+five tiers. The charge meter imports its notch boundaries and tier lookup from
+there, so what the player reads off the meter and what the water does cannot
+drift apart. Every tier steps up droplet count, speed, life and ripple strength
+together, so the tier is legible from the splash without reading the HUD.
+
+Droplets fade by *shrinking*, never by alpha — a semi-transparent pixel is
+off-palette and reads as blur in a pixel-art scene. The layer idles when nothing
+is in flight, and droplet count is capped so mashing max-charge cannot run away.
+
+### 4.4 The HUD contract (Block 1 → Block 3)
 
 `HudState` in `src/types/game.ts` is the single hand-off point. Block 3 must
 produce this object every frame; the HUD is otherwise pure and stateless:
@@ -177,7 +208,7 @@ interface HudState {
 }
 ```
 
-### 4.4 The navigation contract
+### 4.5 The navigation contract
 
 Screens never import each other. They call `useNavigation()`:
 
