@@ -21,6 +21,88 @@
   </head>
   <body>
     <div id="root"></div>
+    <!--
+      Every fix so far for the blank-page bug targeted the build/deploy
+      pipeline (stale cached assets, multi-file version mismatches) and was
+      verified from a development machine — never from the browser that
+      actually reported blank. If the cause turns out to be something else
+      entirely (a script parse error on an older engine, a runtime exception
+      before React mounts, a network failure), nothing above would catch it,
+      and there'd be no way to know without remote devtools.
+
+      This script is deliberately NOT part of the bundle: it's plain ES5 in a
+      classic (non-module) tag, so it parses and runs on essentially anything,
+      independently of whether the module script below succeeds. It watches
+      for #root staying empty and, if so, renders a diagnostic in plain DOM
+      calls — no framework, nothing that itself could fail the same way.
+    -->
+    <script>
+      (function () {
+        var lastError = null;
+
+        window.addEventListener('error', function (event) {
+          lastError = (event && event.message) || 'Unknown script error';
+          if (event && event.filename) {
+            lastError += ' (' + event.filename + ':' + event.lineno + ')';
+          }
+        });
+        window.addEventListener('unhandledrejection', function (event) {
+          var reason = event && event.reason;
+          lastError = 'Unhandled promise rejection: ' + (reason && reason.message ? reason.message : String(reason));
+        });
+
+        window.setTimeout(function () {
+          var root = document.getElementById('root');
+          if (!root || root.firstChild) return; // App mounted normally.
+
+          var box = document.createElement('div');
+          box.setAttribute('data-diagnostic', 'blank-page-fallback');
+          box.setAttribute(
+            'style',
+            'position:fixed;inset:0;background:#04121f;color:#e8fbff;' +
+              'font-family:ui-monospace,monospace;font-size:13px;line-height:1.5;' +
+              'padding:24px;box-sizing:border-box;overflow:auto;z-index:99999'
+          );
+
+          var title = document.createElement('div');
+          title.textContent = 'Splash Royale did not start';
+          title.setAttribute('style', 'font-weight:bold;font-size:16px;margin-bottom:12px');
+          box.appendChild(title);
+
+          var body = document.createElement('div');
+          body.textContent =
+            'The page loaded, but the app never mounted. This is diagnostic ' +
+            'output, not a normal error screen — please share this text.';
+          box.appendChild(body);
+
+          var detail = document.createElement('pre');
+          detail.setAttribute(
+            'style',
+            'margin-top:16px;white-space:pre-wrap;word-break:break-word;' +
+              'background:#0a2540;padding:12px;border:1px solid #1878a8'
+          );
+          detail.textContent =
+            'Captured error: ' + (lastError || '(none — script may not have run at all)') + '\n' +
+            'URL: ' + location.href + '\n' +
+            'User agent: ' + navigator.userAgent;
+          box.appendChild(detail);
+
+          var reload = document.createElement('button');
+          reload.textContent = 'Reload';
+          reload.setAttribute(
+            'style',
+            'margin-top:16px;padding:10px 18px;background:#34b6d8;color:#04121f;' +
+              'border:none;font-weight:bold;font-family:inherit;font-size:13px;cursor:pointer'
+          );
+          reload.addEventListener('click', function () {
+            location.reload();
+          });
+          box.appendChild(reload);
+
+          document.body.appendChild(box);
+        }, 2500);
+      })();
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
