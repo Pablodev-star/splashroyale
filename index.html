@@ -40,6 +40,18 @@
       (function () {
         var lastError = null;
 
+        // A Content-Security-Policy that blocks inline scripts (injected by a
+        // network-level filter or proxy ahead of this page, since nothing
+        // here sets one) fires this event instead of a normal script error —
+        // and does so even for the script that got blocked, so this needs to
+        // be registered before anything else has a chance to be stopped.
+        var cspViolations = [];
+        document.addEventListener('securitypolicyviolation', function (event) {
+          cspViolations.push(
+            (event.violatedDirective || '?') + ' blocked ' + (event.blockedURI || '?')
+          );
+        });
+
         window.addEventListener('error', function (event) {
           lastError = (event && event.message) || 'Unknown script error';
           if (event && event.filename) {
@@ -122,6 +134,20 @@
           var scriptCount = probe(function () {
             return String(document.getElementsByTagName('script').length);
           }, 'unknown');
+          // The single most direct check available without real devtools: is
+          // the app's code actually sitting in the DOM at its expected size,
+          // or did something between the server and this engine strip or
+          // truncate it before the engine ever got a chance to run it? A
+          // module script that never executes is indistinguishable, from
+          // every channel above, from one that was never really there.
+          var moduleScriptLength = probe(function () {
+            var el = document.querySelector('script[type="module"]');
+            if (!el) return '(no script[type=module] element found in DOM)';
+            return String(el.textContent.length) + ' characters';
+          }, 'unknown');
+          var readyState = probe(function () {
+            return document.readyState;
+          }, 'unknown');
 
           var detail = document.createElement('pre');
           detail.setAttribute(
@@ -132,6 +158,9 @@
           detail.textContent =
             'Captured error: ' + (lastError || '(none — script may not have run at all)') + '\n' +
             'Boot stage reached: ' + bootStage + '\n' +
+            'CSP violations: ' + (cspViolations.length ? cspViolations.join('; ') : 'none') + '\n' +
+            'Module script size in DOM: ' + moduleScriptLength + '\n' +
+            'Document ready state: ' + readyState + '\n' +
             'URL: ' + location.href + '\n' +
             'User agent: ' + navigator.userAgent + '\n' +
             'localStorage works: ' + storageWorks + '\n' +
