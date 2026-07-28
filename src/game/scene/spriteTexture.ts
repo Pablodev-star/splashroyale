@@ -1,4 +1,4 @@
-import { NearestFilter, Texture } from 'three';
+import { NearestFilter, SRGBColorSpace, Texture } from 'three';
 import {
   CELL_HEIGHT,
   CELL_WIDTH,
@@ -66,6 +66,10 @@ export function createSpriteTexture(palette: SpritePalette): SpriteFrameTexture 
   texture.magFilter = NearestFilter;
   texture.minFilter = NearestFilter;
   texture.generateMipmaps = false;
+  // The atlas holds sRGB palette colours. Left untagged, Three treats the
+  // texels as already-linear and converts them to sRGB again on output, so the
+  // characters render brighter than the palette they were authored in.
+  texture.colorSpace = SRGBColorSpace;
 
   const cellU = CELL_WIDTH / atlas.sheet.width;
   const cellV = CELL_HEIGHT / atlas.sheet.height;

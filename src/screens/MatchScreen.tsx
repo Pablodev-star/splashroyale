@@ -127,7 +127,13 @@ export function MatchScreen({ mode, mapId, roomCode }: MatchScreenProps) {
 
   return (
     <div className="bg-abyss relative h-full w-full overflow-hidden">
-      <Arena3D map={map} fighters={sceneFighters} className="absolute inset-0" ref={arenaRef} />
+      <Arena3D
+        map={map}
+        fighters={sceneFighters}
+        projectiles={projectiles}
+        className="absolute inset-0"
+        ref={arenaRef}
+      />
 
       <GameHud
         state={hud}

@@ -3,7 +3,7 @@ import { useAnimationFrame } from '@/hooks/useAnimationFrame';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
 import type { GameMap } from '@/types/game';
 import type { SplashTier } from '@/game/vfx';
-import { ArenaScene, type SceneFighter } from './ArenaScene';
+import { ArenaScene, type SceneFighter, type SceneProjectile } from './ArenaScene';
 import { cn } from '@/lib/cn';
 
 export interface Arena3DHandle {
@@ -18,6 +18,7 @@ export interface Arena3DHandle {
 export interface Arena3DProps {
   map: GameMap;
   fighters: SceneFighter[];
+  projectiles?: SceneProjectile[];
   /** Fired when the player drags the camera, since that also turns the fighter. */
   onYawChange?: (yaw: number) => void;
   children?: ReactNode;
@@ -39,6 +40,7 @@ const DRAG_SENSITIVITY = Math.PI * 2;
 export function Arena3D({
   map,
   fighters,
+  projectiles = [],
   onYawChange,
   children,
   className,
@@ -52,6 +54,11 @@ export function Arena3D({
   // Latest fighters, read by the render loop without re-subscribing it.
   const fightersRef = useRef(fighters);
   fightersRef.current = fighters;
+  const projectilesRef = useRef(projectiles);
+  projectilesRef.current = projectiles;
+  // Read inside the resize callback, which is created once with the scene.
+  const reducedMotionRef = useRef(reducedMotion);
+  reducedMotionRef.current = reducedMotion;
   const yawChangeRef = useRef(onYawChange);
   yawChangeRef.current = onYawChange;
 
@@ -67,7 +74,15 @@ export function Arena3D({
 
     const applySize = () => {
       const rect = wrapper.getBoundingClientRect();
-      if (rect.width > 0 && rect.height > 0) scene.resize(rect.width, rect.height);
+      if (rect.width === 0 || rect.height === 0) return;
+      scene.resize(rect.width, rect.height);
+      // With the loop stopped there is nothing to redraw the resized buffer,
+      // so a reduced-motion user would be left looking at a stretched frame.
+      if (reducedMotionRef.current) {
+        scene.setFighters(fightersRef.current);
+        scene.setProjectiles(projectilesRef.current);
+        scene.render(0, fightersRef.current);
+      }
     };
     applySize();
 
@@ -131,20 +146,25 @@ export function Arena3D({
       const scene = sceneRef.current;
       if (!scene) return;
       scene.setFighters(fightersRef.current);
+      scene.setProjectiles(projectilesRef.current);
       scene.render(delta, fightersRef.current);
     },
-    { fps: 60, paused: false },
+    // Honours prefers-reduced-motion like every other animated surface in the
+    // app. Hard-coding `false` here kept water, sprites and particles running
+    // at 60fps and immediately painted over the single static frame below.
+    { fps: 60, paused: reducedMotion },
   );
 
-  // Reduced motion still needs one painted frame, or the arena is a blank
-  // canvas rather than a still scene.
+  // Reduced motion: no loop, so paint one frame — and repaint whenever the
+  // scene's contents actually change, or the arena would freeze on the first.
   useEffect(() => {
     if (!reducedMotion) return;
     const scene = sceneRef.current;
     if (!scene) return;
-    scene.setFighters(fightersRef.current);
-    scene.render(0, fightersRef.current);
-  }, [reducedMotion]);
+    scene.setFighters(fighters);
+    scene.setProjectiles(projectiles);
+    scene.render(0, fighters);
+  }, [reducedMotion, fighters, projectiles]);
 
   return (
     <div

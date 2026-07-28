@@ -13,6 +13,7 @@ import {
   Points,
   PointsMaterial,
   Scene,
+  SRGBColorSpace,
   WebGLRenderer,
 } from 'three';
 import { SPLASH_TIERS, type SplashTier } from '@/game/vfx';
@@ -78,6 +79,14 @@ const SPLASH_GRAVITY = 12;
 const MAX_SCENE_DROPLETS = 400;
 
 /**
+ * Projectiles in flight. Drawn as chunky points riding above the surface: the
+ * 2D arena drew them and the first 3D pass dropped them, which left attacks
+ * with no visible representation at all on mobile, where the minimap is hidden.
+ */
+const MAX_PROJECTILES = 32;
+const PROJECTILE_HEIGHT = 0.85;
+
+/**
  * Third-person framing. Close and low enough that a fighter fills a useful part
  * of the screen — the first pass sat far back and high, which read as a map
  * preview rather than a character you control.
@@ -85,6 +94,13 @@ const MAX_SCENE_DROPLETS = 400;
 const CAMERA_DISTANCE = 7;
 const CAMERA_HEIGHT = 3.2;
 const CAMERA_LOOK_HEIGHT = 0.9;
+
+/** A projectile in flight, in the same normalised arena space as fighters. */
+export interface SceneProjectile {
+  id: string;
+  x: number;
+  y: number;
+}
 
 export interface SceneFighter {
   id: string;
@@ -151,6 +167,10 @@ export class ArenaScene {
   private readonly dropletPoints: Points;
   private readonly dropletGeometry = new BufferGeometry();
 
+  private readonly projectileGeometry = new BufferGeometry();
+  private readonly projectilePositions = new Float32Array(MAX_PROJECTILES * 3);
+  private readonly projectilePoints: Points;
+
   constructor(canvas: HTMLCanvasElement, { map, pixelSize = 3 }: ArenaSceneOptions) {
     this.map = map;
     this.pixelSize = pixelSize;
@@ -176,6 +196,9 @@ export class ArenaScene {
     this.waterTexture.magFilter = NearestFilter;
     this.waterTexture.minFilter = NearestFilter;
     this.waterTexture.generateMipmaps = false;
+    // Same reason as the sprite atlas: these are sRGB palette colours, and an
+    // untagged texture gets double-converted and washes out.
+    this.waterTexture.colorSpace = SRGBColorSpace;
 
     const water = new Mesh(
       new PlaneGeometry(ARENA_SIZE, ARENA_SIZE),
@@ -216,7 +239,39 @@ export class ArenaScene {
     this.dropletPoints.frustumCulled = false;
     this.scene.add(this.dropletPoints);
 
+    // --- Projectiles ---------------------------------------------------------
+    this.projectileGeometry.setAttribute(
+      'position',
+      new BufferAttribute(this.projectilePositions, 3).setUsage(35048 /* DynamicDrawUsage */),
+    );
+    this.projectileGeometry.setDrawRange(0, 0);
+    this.projectilePoints = new Points(
+      this.projectileGeometry,
+      new PointsMaterial({
+        color: new Color(map.palette.crest),
+        size: 0.42,
+        sizeAttenuation: true,
+        transparent: true,
+        depthWrite: false,
+      }),
+    );
+    this.projectilePoints.frustumCulled = false;
+    this.scene.add(this.projectilePoints);
+
     this.paintWater(0);
+  }
+
+  /** Places the projectiles for this frame. */
+  setProjectiles(list: SceneProjectile[]): void {
+    const count = Math.min(list.length, MAX_PROJECTILES);
+    for (let i = 0; i < count; i += 1) {
+      const { x, z } = this.toWorld(list[i].x, list[i].y);
+      this.projectilePositions[i * 3] = x;
+      this.projectilePositions[i * 3 + 1] = PROJECTILE_HEIGHT;
+      this.projectilePositions[i * 3 + 2] = z;
+    }
+    this.projectileGeometry.setDrawRange(0, count);
+    this.projectileGeometry.attributes.position.needsUpdate = true;
   }
 
   /**
@@ -485,8 +540,10 @@ export class ArenaScene {
     }
     this.fighters.clear();
 
+    // Points as well as Mesh: the droplet and projectile clouds are `Points`,
+    // and a Mesh-only traversal leaked their buffers on every map change.
     this.scene.traverse((object) => {
-      if (object instanceof Mesh) {
+      if (object instanceof Mesh || object instanceof Points) {
         object.geometry.dispose();
         const material = object.material;
         if (Array.isArray(material)) material.forEach((m) => m.dispose());
