@@ -55,6 +55,18 @@
           var root = document.getElementById('root');
           if (!root || root.firstChild) return; // App mounted normally.
 
+          // Second channel, independent of the event listeners above: WebKit
+          // has a documented history of not reliably firing `error` for
+          // module-script exceptions the way classic scripts do. main.tsx
+          // catches its own top-level render call and stashes the error here,
+          // so a report of "no captured error" is only possible when nothing
+          // in application code threw at all — which points at a genuine
+          // parse-time or environmental failure rather than a runtime bug.
+          if (!lastError && window.__SPLASH_BOOT_ERROR__) {
+            var boot = window.__SPLASH_BOOT_ERROR__;
+            lastError = boot && boot.message ? boot.message : String(boot);
+          }
+
           var box = document.createElement('div');
           box.setAttribute('data-diagnostic', 'blank-page-fallback');
           box.setAttribute(
@@ -75,6 +87,36 @@
             'output, not a normal error screen — please share this text.';
           box.appendChild(body);
 
+          // Cheap probes for the environmental causes that would explain "no
+          // error, nothing ran" without a code bug: JS disabled for storage
+          // (private mode lockdowns), a content blocker stripping inline
+          // scripts, or canvas/WebGL restrictions. Each is wrapped separately
+          // so one probe failing does not blank the rest of the report.
+          function probe(fn, fallback) {
+            try {
+              return fn();
+            } catch (probeError) {
+              return fallback + ' (probe failed: ' + probeError.message + ')';
+            }
+          }
+          var storageWorks = probe(function () {
+            var key = '__splash_probe__';
+            window.localStorage.setItem(key, '1');
+            window.localStorage.removeItem(key);
+            return 'yes';
+          }, 'no');
+          var canvas2d = probe(function () {
+            return document.createElement('canvas').getContext('2d') ? 'yes' : 'no';
+          }, 'unknown');
+          var webgl = probe(function () {
+            var gl = document.createElement('canvas').getContext('webgl2') ||
+              document.createElement('canvas').getContext('webgl');
+            return gl ? 'yes' : 'no';
+          }, 'unknown');
+          var scriptCount = probe(function () {
+            return String(document.getElementsByTagName('script').length);
+          }, 'unknown');
+
           var detail = document.createElement('pre');
           detail.setAttribute(
             'style',
@@ -84,7 +126,11 @@
           detail.textContent =
             'Captured error: ' + (lastError || '(none — script may not have run at all)') + '\n' +
             'URL: ' + location.href + '\n' +
-            'User agent: ' + navigator.userAgent;
+            'User agent: ' + navigator.userAgent + '\n' +
+            'localStorage works: ' + storageWorks + '\n' +
+            'Canvas2D available: ' + canvas2d + '\n' +
+            'WebGL available: ' + webgl + '\n' +
+            'Script tags on page: ' + scriptCount;
           box.appendChild(detail);
 
           var reload = document.createElement('button');
