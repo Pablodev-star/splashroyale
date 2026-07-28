@@ -66,6 +66,7 @@ src/
     vfx/                   Splash tiers, droplet sim, splash events
     scene/                 Three.js arena: billboards, water plane, orbit camera
     engine/                Match simulation: movement, abilities, rounds, bot
+    progression/           Economy: level curves, pack rolls, match rewards
 
   components/
     ui/                    Design-system primitives. No game knowledge.
@@ -106,8 +107,8 @@ narrow, typed interface.
 | **3A — 3D arena** (done)              | `game/scene/**`                                        | Sprite atlas from 2A, water renderer from 2B, splash tiers from 2C.                     |
 | **3B — Cards as abilities / decks** (done) | `data/cards.ts`, `data/decks.ts`, `state/DeckContext.tsx`, deck screens | The equipped deck feeds the match HUD and, from 3C, the engine.        |
 | **3C — Controls / physics / combat** (done) | `game/engine/**`                                  | Deck from 3B, scene from 3A, splash tiers from 2C; produces `HudState`.                |
-| **4 — Cards, shop, packs**            | `features/progression/**`                              | `ShopScreen`/`PackPreviewScreen`/`CollectionScreen`, `data/cards.ts`, `data/packs.ts`. |
-| **5 — Card detail & level-up**        | `screens/CardDetailScreen.tsx`                         | The `cardDetail` route and card types from Block 4.                                    |
+| **4 — Progression, packs, economy** (done) | `game/progression/**`, `state/PlayerContext.tsx` | Card catalogue from 3B; feeds card levels into 3C combat.                              |
+| **5 — Online play**                   | `state/**`, Supabase                                   | Real opponents, accounts, and progression synced off-device.                            |
 
 ### 4.1 The sprite contract (Block 2A → Block 3)
 
@@ -310,7 +311,46 @@ loop rather than by inspecting a diff (56 checks, swept across 20 seeds).
 `tuning.ts` holds every balance number in metres and seconds, matching the card
 `ability` fields exactly — a card that says `range: 7` reaches seven metres.
 
-### 4.7 The HUD contract (Block 1 → Block 3)
+### 4.7 The progression contract (Block 4)
+
+```ts
+const { profile, cards, cardById, openPack, levelUpCard, creditMatch } = usePlayer();
+```
+
+A card has two halves. `CardDefinition` in `data/cards.ts` is what the card *is*
+— its ability, its numbers, its slot — and never changes. `CardProgress`
+(`{ level, copies }`) is what one *player* has done with it. `resolveCard`
+merges them into the `AbilityCard` every screen and the combat engine consume,
+so a level bought on the detail page is the damage the ability deals in the next
+match, through `abilityAtLevel`, with no second copy of the number anywhere.
+
+- **The economy is pure functions.** `game/progression/economy.ts` and
+  `packRoll.ts` take values and return values; the provider only holds state and
+  applies them. That is what lets the curve be *swept* — 200k rarity rolls
+  against the advertised odds, and full collection runs under two different
+  buying strategies — rather than eyeballed. A drop table that is merely
+  plausible and one that is correct look identical in a diff.
+- **The odds table is a promise about rarity, not about which card.** Within the
+  rolled rarity, pulls prefer cards you are missing (`NEW_CARD_BIAS`). Uniform
+  picking left the last few legendaries to pure chance and stretched a complete
+  collection to anywhere up to 320 capped days; the bias keeps the advertised
+  rates exactly true and brings that back to 60–110, with half the catalogue
+  inside two days.
+- **The guarantee upgrades a roll, it never appends one.** A five-card pack
+  hands over five cards whether or not the odds were kind. Rolling until the
+  guarantee lands would make a generous roll pay less than a stingy one.
+- **Buying opens.** There is no inventory of unopened packs: a pack you own but
+  have not opened is a chore, not a reward. `openPack` spends the gold and
+  applies every pull *before* the ceremony screen mounts, so backing out,
+  reloading or losing the tab cannot cost a pack.
+- **The daily cap limits gold and never XP.** Grinding past it still progresses
+  the account but stops buying packs, and a clipped payout says so on the result
+  screen — silently paying less than the match was worth reads as a bug.
+- **Ownership is real, so deck repair has teeth.** `sanitiseDeck` now takes the
+  player's resolved collection: a deck naming cards this account never pulled is
+  repaired to ones it owns rather than starting a match with an empty slot.
+
+### 4.8 The HUD contract (Block 1 → Block 3)
 
 `HudState` in `src/types/game.ts` is the single hand-off point. Block 3 must
 produce this object every frame; the HUD is otherwise pure and stateless:
@@ -325,7 +365,7 @@ interface HudState {
 }
 ```
 
-### 4.8 The navigation contract
+### 4.9 The navigation contract
 
 Screens never import each other. They call `useNavigation()`:
 

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { AbilityCard, AbilitySlot, GameMode, MapId, MatchOutcome } from '@/types/game';
+import type { AbilityCard, AbilitySlot, GameMode, MapId } from '@/types/game';
 import { MAP_BY_ID } from '@/data/maps';
-import { CARD_BY_ID, SLOT_ORDER } from '@/data/cards';
+import { SLOT_ORDER } from '@/data/cards';
 import { Arena3D, type Arena3DHandle, type SceneFighter } from '@/game/scene';
 import { useMatchEngine } from '@/game/engine';
 import { useWaterReactions, type WaterActor } from '@/components/water/useWaterReactions';
@@ -14,6 +14,7 @@ import { PixelBadge } from '@/components/ui/PixelBadge';
 import { useNavigation } from '@/state/NavigationContext';
 import { useSettings } from '@/state/SettingsContext';
 import { useDecks } from '@/state/DeckContext';
+import { usePlayer } from '@/state/PlayerContext';
 
 export interface MatchScreenProps {
   mode: GameMode;
@@ -35,6 +36,7 @@ export function MatchScreen({ mode, mapId, roomCode }: MatchScreenProps) {
   const { navigate, back } = useNavigation();
   const { settings } = useSettings();
   const { activeDeck } = useDecks();
+  const { cardById, creditMatch } = usePlayer();
   const map = MAP_BY_ID[mapId];
 
   const [paused, setPaused] = useState(false);
@@ -52,11 +54,11 @@ export function MatchScreen({ mode, mapId, roomCode }: MatchScreenProps) {
   const abilities = useMemo(() => {
     const equipped: Partial<Record<AbilitySlot, AbilityCard>> = {};
     for (const slot of SLOT_ORDER) {
-      const card = CARD_BY_ID[activeDeck.cards[slot]];
+      const card = cardById[activeDeck.cards[slot]];
       if (card) equipped[slot] = card;
     }
     return equipped;
-  }, [activeDeck]);
+  }, [activeDeck, cardById]);
 
   // --- Input ---------------------------------------------------------------
   // `dive` is a toggle in the UI but a held state in the engine, so the button
@@ -180,18 +182,22 @@ export function MatchScreen({ mode, mapId, roomCode }: MatchScreenProps) {
 
   const endMatch = useCallback(
     (victory: boolean) => {
-      navigate(
-        'result',
+      // The rewards are *credited* here, not merely displayed: `creditMatch`
+      // applies the gold (capped), the XP and any levels, and hands back the
+      // outcome with the numbers it actually paid.
+      const outcome = creditMatch(
         {
-          mode,
-          mapId,
-          outcome: buildOutcome(victory, mode, snapshot),
-          roomCode,
+          victory,
+          score: snapshot.score,
+          durationMs: MATCH_DURATION_MS - snapshot.timeRemainingMs,
+          stats: snapshot.stats,
+          eloDelta: mode === 'online' ? (victory ? 18 : -14) : null,
         },
-        'scale',
+        mode,
       );
+      navigate('result', { mode, mapId, outcome, roomCode }, 'scale');
     },
-    [mapId, mode, navigate, roomCode, snapshot],
+    [creditMatch, mapId, mode, navigate, roomCode, snapshot],
   );
 
   const finished = snapshot.finished;
@@ -312,26 +318,3 @@ export function MatchScreen({ mode, mapId, roomCode }: MatchScreenProps) {
   );
 }
 
-/** PLACEHOLDER(Block 4): rewards still come from a flat table; the match
- *  statistics below are real, read straight off the engine. */
-function buildOutcome(
-  victory: boolean,
-  mode: GameMode,
-  snapshot: { score: { self: number; opponent: number }; timeRemainingMs: number; stats: MatchOutcome['stats'] },
-): MatchOutcome {
-  const base = victory ? 180 : 60;
-  const modeMultiplier = mode === 'localBots' ? 0.5 : 1;
-  return {
-    victory,
-    score: snapshot.score,
-    durationMs: MATCH_DURATION_MS - snapshot.timeRemainingMs,
-    goldEarned: Math.round(base * modeMultiplier),
-    xpEarned: victory ? 120 : 45,
-    levelBefore: 7,
-    levelAfter: 7,
-    xpIntoLevel: 460,
-    xpPerLevel: 900,
-    stats: snapshot.stats,
-    eloDelta: mode === 'online' ? (victory ? 18 : -14) : null,
-  };
-}

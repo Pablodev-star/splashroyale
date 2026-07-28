@@ -76,6 +76,13 @@ export function ResultScreen({ mode, mapId, outcome, roomCode }: ResultScreenPro
                   +{formatNumber(gold)} <span className="text-base">◆</span>
                 </span>
               </div>
+              {/* A capped payout has to say so. Silently paying less than the
+                  match was worth reads as a bug, not as a rule. */}
+              {outcome.goldCapped && (
+                <p className="text-mist/50 -mt-3 text-[10px] leading-snug">
+                  Daily gold cap reached — XP still counts in full.
+                </p>
+              )}
 
               <div className="flex items-center justify-between gap-3">
                 <span className="text-[11px] tracking-[0.16em] uppercase">Experience</span>

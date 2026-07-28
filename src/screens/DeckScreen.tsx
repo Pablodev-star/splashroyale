@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import type { AbilitySlot, MatchTarget, Rarity } from '@/types/game';
 import {
-  CARD_BY_ID,
   RARITY_LABEL,
   RARITY_ORDER,
   SLOT_GLYPH,
@@ -22,6 +21,7 @@ import { PixelBadge } from '@/components/ui/PixelBadge';
 import { PixelInput } from '@/components/ui/PixelInput';
 import { useNavigation } from '@/state/NavigationContext';
 import { useDecks } from '@/state/DeckContext';
+import { useCollection } from '@/state/PlayerContext';
 import { cn } from '@/lib/cn';
 
 export interface DeckScreenProps {
@@ -46,6 +46,7 @@ const RARITY_CHIP: Record<Rarity, string> = {
 export function DeckScreen({ next }: DeckScreenProps) {
   const { navigate, back } = useNavigation();
   const { decks, activeDeck, selectDeck, equip, renameDeck, createDeck, deleteDeck } = useDecks();
+  const { cardById } = useCollection();
 
   const [picking, setPicking] = useState<AbilitySlot | null>(null);
   // The rename holds the deck it was opened for, not just a flag. Tracking only
@@ -54,7 +55,7 @@ export function DeckScreen({ next }: DeckScreenProps) {
   // with the first one's draft text.
   const [renaming, setRenaming] = useState<{ deckId: string; name: string } | null>(null);
 
-  const cards = deckCards(activeDeck);
+  const cards = deckCards(activeDeck, cardById);
   const map = next ? MAP_BY_ID[next.mapId] : undefined;
   // Resolved from the id, so deleting the deck mid-rename drops the form back
   // to the buttons instead of editing a deck that no longer exists.
@@ -163,7 +164,7 @@ export function DeckScreen({ next }: DeckScreenProps) {
           <div className="grid gap-4 pb-6 lg:grid-cols-[minmax(0,440px)_1fr] lg:items-start">
             <div className="grid grid-cols-3 gap-2 sm:gap-3">
             {SLOT_ORDER.map((slot, index) => {
-              const card = CARD_BY_ID[activeDeck.cards[slot]];
+              const card = cardById[activeDeck.cards[slot]];
               return (
                 <div
                   key={slot}
@@ -215,7 +216,7 @@ export function DeckScreen({ next }: DeckScreenProps) {
             <PixelPanel title="Loadout" headerAside={activeDeck.name} className="animate-rise-in">
               <ul className="flex flex-col gap-2">
                 {SLOT_ORDER.map((slot) => {
-                  const card = CARD_BY_ID[activeDeck.cards[slot]];
+                  const card = cardById[activeDeck.cards[slot]];
                   if (!card) return null;
                   return (
                     <li key={slot} className="flex items-start gap-2">

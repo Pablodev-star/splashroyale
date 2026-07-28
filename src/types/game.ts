@@ -1,3 +1,5 @@
+import type { PackPull } from '@/game/progression/packRoll';
+
 /**
  * Shared types for Splash Royale.
  *
@@ -20,6 +22,7 @@ export type ScreenId =
   | 'result'
   | 'shop'
   | 'packPreview'
+  | 'packOpen'
   | 'collection'
   | 'cardDetail'
   | 'settings';
@@ -50,6 +53,8 @@ export interface RouteParams {
   result: { mode: GameMode; mapId: MapId; outcome: MatchOutcome; roomCode?: string };
   shop: undefined;
   packPreview: { packId: string };
+  /** Pulls arrive already applied — the ceremony only presents them. */
+  packOpen: { packId: string; pulls: PackPull[]; goldFromDuplicates: number };
   collection: undefined;
   cardDetail: { cardId: string };
   settings: undefined;
@@ -150,7 +155,15 @@ export type Rarity = 'common' | 'rare' | 'epic' | 'legendary';
  */
 export type AbilitySlot = 'attack1' | 'attack2' | 'ultimate';
 
-export interface AbilityCard {
+/**
+ * A card as authored: what it does and what it costs, with no player state.
+ *
+ * Level, copies and ownership belong to the *player*, not the catalogue — two
+ * accounts see the same definitions and different progress. `AbilityCard` below
+ * is a definition resolved against one player's progress, and it is what every
+ * screen and the combat engine consume.
+ */
+export interface CardDefinition {
   id: string;
   name: string;
   /** The only slot this card can be equipped in. */
@@ -160,13 +173,6 @@ export interface AbilityCard {
   description: string;
   /** How it feels to use. Shown on the detail screen, never on the card face. */
   flavour: string;
-  level: number;
-  maxLevel: number;
-  /** Copies owned toward the next level. */
-  copies: number;
-  copiesForNextLevel: number;
-  /** True once the player has pulled it from a pack. */
-  owned: boolean;
   /** Combat numbers. Block 3C reads these; the UI shows them on the card. */
   ability: {
     /** Damage of one full-power use, as a share of a fighter's health bar. */
@@ -198,6 +204,23 @@ export interface AbilityCard {
      */
     drives?: 'damage' | 'range' | 'cooldownS' | 'chargeS';
   };
+}
+
+/** One player's progress on one card. Absent from the record means unowned. */
+export interface CardProgress {
+  level: number;
+  /** Copies banked toward the next level. */
+  copies: number;
+}
+
+/** A definition resolved against a player's progress — what the UI renders. */
+export interface AbilityCard extends CardDefinition {
+  level: number;
+  maxLevel: number;
+  copies: number;
+  copiesForNextLevel: number;
+  /** True once the player has pulled it from a pack. */
+  owned: boolean;
 }
 
 /** Three cards, one per slot. Saved so a deck is picked once, not every match. */
@@ -290,7 +313,10 @@ export interface MatchOutcome {
   /** Rounds won by each side. */
   score: { self: number; opponent: number };
   durationMs: number;
+  /** Gold actually paid, after the daily cap. */
   goldEarned: number;
+  /** True when the daily cap clipped the payout, so the UI can say why. */
+  goldCapped?: boolean;
   xpEarned: number;
   /** XP progress toward the next level, after the match. */
   levelBefore: number;

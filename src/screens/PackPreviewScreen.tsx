@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { PACK_BY_ID, PACK_TIER_LABEL } from '@/data/packs';
-import { CARDS, RARITY_LABEL, RARITY_ORDER } from '@/data/cards';
+import { RARITY_LABEL, RARITY_ORDER } from '@/data/cards';
 import { GameCard } from '@/components/cards/GameCard';
 import { Pack3D } from '@/components/packs/Pack3D';
 import { OddsTable } from '@/components/packs/OddsTable';
@@ -13,17 +13,17 @@ import { useNavigation } from '@/state/NavigationContext';
 import { usePlayer } from '@/state/PlayerContext';
 import { formatNumber } from '@/lib/format';
 import { cn } from '@/lib/cn';
-import type { PackTier } from '@/types/game';
+import type { AbilityCard, PackTier, Rarity } from '@/types/game';
 
 export interface PackPreviewScreenProps {
   packId: string;
 }
 
 /** Three cards from the pool this pack draws from, best rarity first. */
-function sampleCards(guaranteed: (typeof RARITY_ORDER)[number]) {
+function sampleCards(cards: AbilityCard[], guaranteed: Rarity): AbilityCard[] {
   const floor = RARITY_ORDER.indexOf(guaranteed);
-  const eligible = CARDS.filter((card) => RARITY_ORDER.indexOf(card.rarity) >= floor);
-  const pool = eligible.length >= 3 ? eligible : CARDS;
+  const eligible = cards.filter((card) => RARITY_ORDER.indexOf(card.rarity) >= floor);
+  const pool = eligible.length >= 3 ? eligible : cards;
   return [...pool]
     .sort((a, b) => RARITY_ORDER.indexOf(b.rarity) - RARITY_ORDER.indexOf(a.rarity))
     .slice(0, 3);
@@ -42,10 +42,12 @@ const TIER_TONE: Record<PackTier, 'neutral' | 'surf' | 'epic' | 'legendary'> = {
  * step further (the confirmation only opens from the Buy button).
  */
 export function PackPreviewScreen({ packId }: PackPreviewScreenProps) {
-  const { back } = useNavigation();
-  const { profile, spendGold } = usePlayer();
+  const { back, navigate } = useNavigation();
+  const { profile, cards, openPack } = usePlayer();
   const [confirming, setConfirming] = useState(false);
-  const [purchased, setPurchased] = useState(false);
+  // Guards a double-click on Buy. Navigation happens on the next render, so two
+  // clicks in the same tick would both reach `openPack` and charge twice.
+  const [buying, setBuying] = useState(false);
 
   const pack = PACK_BY_ID[packId];
 
@@ -129,7 +131,7 @@ export function PackPreviewScreen({ packId }: PackPreviewScreenProps) {
             {/* A taste of what is actually inside. */}
             <PixelPanel title="Cards you could pull" variant="default" className="animate-rise-in">
               <div className="grid grid-cols-3 gap-2">
-                {sampleCards(pack.guaranteed).map((card) => (
+                {sampleCards(cards, pack.guaranteed).map((card) => (
                   <GameCard key={card.id} card={card} size="sm" showProgress={false} static />
                 ))}
               </div>
@@ -158,68 +160,55 @@ export function PackPreviewScreen({ packId }: PackPreviewScreenProps) {
         </div>
       </div>
 
-      {/* Confirmation — only reachable from the Buy button. */}
+      {/* Confirmation — only reachable from the Buy button. Buying opens the
+          pack immediately: there is no inventory of unopened packs to manage,
+          and a pack you own but have not opened is a chore, not a reward. */}
       {confirming && (
         <div className="bg-abyss/88 absolute inset-0 z-40 flex items-center justify-center p-4">
-          <PixelPanel
-            title={purchased ? 'Pack secured' : 'Confirm purchase'}
-            variant="gold"
-            className="animate-pop-in w-full max-w-sm"
-          >
-            {purchased ? (
-              <div className="flex flex-col gap-3 text-center">
-                <div className="animate-levitate mx-auto">
-                  <Pack3D pack={pack} size="tile" spin effects={false} />
-                </div>
-                <p className="text-[11px] leading-snug">
-                  {pack.name} is in your inventory. The opening ceremony — cards revealed one by one
-                  — lands with the progression block.
-                </p>
+          <PixelPanel title="Confirm purchase" variant="gold" className="animate-pop-in w-full max-w-sm">
+            <div className="flex flex-col gap-3">
+              <p className="text-[11px] leading-snug">
+                Buy <span className="text-gold">{pack.name}</span> for{' '}
+                <span className="text-gold tabular-nums">◆ {formatNumber(pack.costGold)}</span>?
+              </p>
+              <p className="text-mist/50 text-[10px] leading-snug">
+                {pack.cardCount} cards · {RARITY_LABEL[pack.guaranteed]} or better guaranteed.
+                Your balance after: ◆ {formatNumber(profile.gold - pack.costGold)}.
+              </p>
+              <div className="flex gap-2">
+                <PixelButton variant="ghost" size="md" fullWidth onClick={() => setConfirming(false)}>
+                  Cancel
+                </PixelButton>
                 <PixelButton
-                  variant="primary"
+                  variant="gold"
                   size="md"
                   fullWidth
+                  icon="◆"
+                  disabled={buying}
                   onClick={() => {
+                    if (buying) return;
+                    setBuying(true);
+                    const opening = openPack(pack);
+                    if (!opening) {
+                      setBuying(false);
+                      return;
+                    }
                     setConfirming(false);
-                    setPurchased(false);
+                    navigate(
+                      'packOpen',
+                      {
+                        packId: pack.id,
+                        pulls: opening.pulls,
+                        goldFromDuplicates: opening.goldFromDuplicates,
+                      },
+                      'scale',
+                    );
                   }}
                 >
-                  Done
+                  Buy pack
                 </PixelButton>
               </div>
-            ) : (
-              <div className="flex flex-col gap-3">
-                <p className="text-[11px] leading-snug">
-                  Buy <span className="text-gold">{pack.name}</span> for{' '}
-                  <span className="text-gold tabular-nums">◆ {formatNumber(pack.costGold)}</span>?
-                </p>
-                <p className="text-mist/50 text-[10px] leading-snug">
-                  {pack.cardCount} cards · {RARITY_LABEL[pack.guaranteed]} or better guaranteed.
-                  Your balance after: ◆ {formatNumber(profile.gold - pack.costGold)}.
-                </p>
-                <div className="flex gap-2">
-                  <PixelButton
-                    variant="ghost"
-                    size="md"
-                    fullWidth
-                    onClick={() => setConfirming(false)}
-                  >
-                    Cancel
-                  </PixelButton>
-                  <PixelButton
-                    variant="gold"
-                    size="md"
-                    fullWidth
-                    icon="◆"
-                    onClick={() => {
-                      if (spendGold(pack.costGold)) setPurchased(true);
-                    }}
-                  >
-                    Buy
-                  </PixelButton>
-                </div>
-              </div>
-            )}
+            </div>
           </PixelPanel>
         </div>
       )}
