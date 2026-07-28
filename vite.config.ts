@@ -1,3 +1,4 @@
+import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath, URL } from 'node:url';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
@@ -25,9 +26,37 @@ import { viteSingleFile } from 'vite-plugin-singlefile';
  * The trade is losing separately-cacheable JS/CSS — every change re-downloads
  * the whole bundle (~100 kB gzipped). For a static game that size, worth it.
  */
+/**
+ * Vite always emits `crossorigin` on the entry `<script type="module">`,
+ * meaningful only for a script fetched from a `src` URL. Once viteSingleFile
+ * inlines that entry's code directly into the tag, the attribute is left on
+ * a script with no URL for cross-origin semantics to apply to — a
+ * combination the spec leaves undefined and that testing here can't rule out
+ * as a WebKit-specific quirk, since only a Chromium engine is available in
+ * this environment. Strip it so the shipped tag is unambiguous: a plain
+ * inline module script, nothing more.
+ */
+function stripInlineModuleCrossorigin() {
+  return {
+    name: 'strip-inline-module-crossorigin',
+    // viteSingleFile does its inlining in generateBundle, after
+    // transformIndexHtml has already run and baked in `src="..."` — the
+    // attribute only becomes dangling once that src disappears. writeBundle
+    // runs once the final HTML has been written to disk, so this rewrites
+    // the actual shipped file rather than an intermediate one.
+    writeBundle(options: { dir?: string }) {
+      const dir = options.dir ?? 'dist';
+      const htmlPath = `${dir}/index.html`;
+      const html = readFileSync(htmlPath, 'utf-8');
+      const stripped = html.replace(/<script type="module" crossorigin>/g, '<script type="module">');
+      if (stripped !== html) writeFileSync(htmlPath, stripped);
+    },
+  };
+}
+
 export default defineConfig({
   base: './',
-  plugins: [react(), tailwindcss(), viteSingleFile()],
+  plugins: [react(), tailwindcss(), viteSingleFile(), stripInlineModuleCrossorigin()],
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
