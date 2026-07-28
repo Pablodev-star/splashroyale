@@ -206,6 +206,12 @@ export type AbilityEffect =
       kind: 'zone';
       /** Drives both the look and the secondary behaviour. */
       flavour: 'poison' | 'chlorine' | 'whirlpool';
+      /**
+       * Radius in metres. Explicit rather than derived from `range`, which is
+       * how far the patch is *thrown* — two different numbers that a card may
+       * want to level independently.
+       */
+      radius: number;
       durationS: number;
       /** Health per second on the 0..100 card scale, applied continuously. */
       dps: number;
@@ -305,6 +311,23 @@ export interface CardDefinition {
      * total still said 14. `abilityAtLevel()` is the only reader.
      */
     drives?: 'damage' | 'range' | 'cooldownS' | 'chargeS';
+    /**
+     * Which `effect` field this stat is, when it is one of those instead.
+     *
+     * Levels used to be cosmetic for most of the catalogue. `drives` can only
+     * name a field of `ability` — damage, range, cooldown, charge — so a card
+     * whose growing number was "Cloud duration", "Blast radius", "Geysers" or
+     * "Hold duration" printed a bigger figure at level 3 and behaved exactly
+     * as it had at level 1. Every one of those numbers lives on `effect`, and
+     * this is how a stat reaches it.
+     *
+     * Untyped by design: the field belongs to whichever variant of the effect
+     * union this card uses, and naming that statically would need a mapped
+     * type per variant. `validateCards` checks at import time that the named
+     * field exists, is numeric, and equals `base` at level 1 — the same guard
+     * `drives` already gets, for the same reason.
+     */
+    drivesEffect?: string;
   };
 }
 

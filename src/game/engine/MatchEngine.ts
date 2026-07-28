@@ -2,7 +2,7 @@ import type { AbilityCard, AbilityEffect, AbilitySlot } from '@/types/game';
 import type { AnimationId } from '@/game/sprites';
 import { animationDurationMs } from '@/game/sprites';
 import { MIN_SPLASH_CHARGE, splashTierFor, type SplashEvent, type SplashTier } from '@/game/vfx';
-import { abilityAtLevel } from '@/data/cards';
+import { abilityAtLevel, effectAtLevel } from '@/data/cards';
 import {
   ACCELERATION,
   ARENA,
@@ -58,11 +58,19 @@ import type {
  * stepping it in a loop and reading the numbers back.
  *
  * The equipped deck (Block 3B) is the whole moveset. There is no hard-coded
- * "basic attack": what attack 1 does is whatever card sits in that slot, read
- * through `abilityAtLevel` so the damage a card advertises is the damage it
- * deals. Ability *tags* select behaviour — `Piercing` keeps a projectile alive
- * past its first hit, `Knockback` pushes, `Pull` drags, `Anti-dive` and
- * `Surfaces` reach submerged targets — so a new card is data, not code.
+ * "basic attack": what attack 1 does is whatever card sits in that slot.
+ *
+ * Behaviour comes from `card.effect`, a discriminated union the engine
+ * dispatches on (Block 7A) — so a new card is data, not code. It used to come
+ * from searching a card's display tags for words like `Radial`, which made the
+ * chips printed on a card face load-bearing and let an unrecognised chip
+ * silently do nothing.
+ *
+ * Both halves are read at the card's current level: `abilityAtLevel` for
+ * damage, range, cooldown and charge, `effectAtLevel` for everything the
+ * effect owns — a fuse, a blast radius, a hold duration, a geyser count.
+ * Reading either one raw is how a card comes to advertise a number it does
+ * not use.
  */
 
 export interface FighterConfig {
@@ -400,7 +408,10 @@ export class MatchEngine {
     if (fighter.cooldowns[slot] > 0) return;
     const card = fighter.loadout[slot];
     const ability = abilityAtLevel(card);
-    const effect = card.effect;
+    // Levelled, like `ability`. Reading `card.effect` directly here is what
+    // made levels cosmetic for most of the catalogue: a level-5 Depth Charge
+    // advertised a 4.2m blast and detonated with the level-1 2.8m one.
+    const effect = effectAtLevel(card);
 
     fighter.cooldowns[slot] = slot === 'ultimate' ? 0 : ability.cooldownS;
     if (slot === 'ultimate') fighter.ultimate = 0;
@@ -524,7 +535,7 @@ export class MatchEngine {
       z,
       // The card's `range` is how far it is thrown; the puddle itself is sized
       // from the same number so a longer-ranged cloud is also a wider one.
-      radius: Math.max(1.6, range * 0.55),
+      radius: effect.radius,
       remainingS: effect.durationS,
       totalS: effect.durationS,
       dps: effect.dps * DAMAGE_SCALE,

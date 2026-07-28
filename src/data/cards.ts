@@ -47,7 +47,7 @@ export const CARD_CATALOG: CardDefinition[] = [
     flavour: 'The pool-fight classic. Cheap, rude, and it always lands.',
     ability: { damage: 11, cooldownS: 2.4, range: 2.2, chargeS: 0, tags: ['Knockback', 'Surfaces'] },
     effect: { kind: 'melee', arcDeg: 90, knockback: 7.5, hitsSubmerged: true },
-    stat: { label: 'Kick force', base: 20, perLevel: 5, unit: '%' },
+    stat: { drivesEffect: 'knockback', label: 'Kick force', base: 7.5, perLevel: 1.2, unit: ' m/s' },
   },
   {
     id: 'splashShove',
@@ -61,7 +61,7 @@ export const CARD_CATALOG: CardDefinition[] = [
     flavour: 'More about where they end up than how much it hurts.',
     ability: { damage: 7, cooldownS: 1.8, range: 3.4, chargeS: 0, tags: ['Cone', 'Knockback'] },
     effect: { kind: 'melee', arcDeg: 170, knockback: 11 },
-    stat: { label: 'Push distance', base: 2.5, perLevel: 0.4, unit: 'm' },
+    stat: { drivesEffect: 'knockback', label: 'Push force', base: 11, perLevel: 1.4, unit: ' m/s' },
   },
   {
     id: 'swell',
@@ -110,7 +110,7 @@ export const CARD_CATALOG: CardDefinition[] = [
     flavour: 'Aim at the water, not at them. It works, somehow.',
     ability: { damage: 13, cooldownS: 0.9, range: 9, chargeS: 0.6, tags: ['Bounces ×2'] },
     effect: { kind: 'projectile', bounces: 2, speed: 10 },
-    stat: { label: 'Skim distance', base: 2, perLevel: 0.5, unit: 'm' },
+    stat: { drivesEffect: 'bounces', label: 'Skips', base: 2, perLevel: 1, unit: '' },
   },
   {
     id: 'bubbleBurst',
@@ -123,7 +123,7 @@ export const CARD_CATALOG: CardDefinition[] = [
     flavour: 'Slow, obvious, and impossible to leave alone.',
     ability: { damage: 16, cooldownS: 3.2, range: 4.5, chargeS: 0, tags: ['Delayed', 'Area'] },
     effect: { kind: 'mine', fuseS: 1.1, radius: 2.6 },
-    stat: { label: 'Bubbles', base: 4, perLevel: 1, unit: '' },
+    stat: { drivesEffect: 'radius', label: 'Burst radius', base: 2.6, perLevel: 0.3, unit: 'm' },
   },
   {
     id: 'riptidePull',
@@ -134,7 +134,7 @@ export const CARD_CATALOG: CardDefinition[] = [
     flavour: 'The pool decides where they stand now, not them.',
     ability: { damage: 8, cooldownS: 4, range: 6.5, chargeS: 0.4, tags: ['Pull'] },
     effect: { kind: 'grab', holdS: 0.5, flavour: 'riptide', pullToSelf: true },
-    stat: { label: 'Pull distance', base: 3, perLevel: 0.6, unit: 'm' },
+    stat: { drivesEffect: 'holdS', label: 'Hold duration', base: 0.5, perLevel: 0.15, unit: 's' },
   },
   {
     id: 'tidalSurge',
@@ -157,8 +157,8 @@ export const CARD_CATALOG: CardDefinition[] = [
     description: 'A cloud of chlorine settles on the water. It burns and slows anyone inside.',
     flavour: 'Nobody wins the fight in there. They just leave.',
     ability: { damage: 28, cooldownS: 50, range: 5, chargeS: 0, tags: ['Zone', 'Over time'] },
-    effect: { kind: 'zone', flavour: 'chlorine', durationS: 6, dps: 9, slow: 0.66 },
-    stat: { label: 'Cloud duration', base: 6, perLevel: 1, unit: 's' },
+    effect: { kind: 'zone', flavour: 'chlorine', radius: 3.2, durationS: 6, dps: 9, slow: 0.66 },
+    stat: { drivesEffect: 'durationS', label: 'Cloud duration', base: 6, perLevel: 1, unit: 's' },
   },
 
   /* ------------------------------------------------------------------ epic */
@@ -171,7 +171,7 @@ export const CARD_CATALOG: CardDefinition[] = [
     flavour: 'One of them will find you. Probably two.',
     ability: { damage: 23, cooldownS: 1.4, range: 8.5, chargeS: 1.4, tags: ['Charge', 'Spread ×3'] },
     effect: { kind: 'projectile', shots: 3, spreadDeg: 26 },
-    stat: { label: 'Spread angle', base: 26, perLevel: -1.5, unit: '°' },
+    stat: { drivesEffect: 'spreadDeg', label: 'Spread angle', base: 26, perLevel: -1.5, unit: '°' },
   },
   {
     id: 'torrentLance',
@@ -182,7 +182,7 @@ export const CARD_CATALOG: CardDefinition[] = [
     flavour: 'Cut the pool in half and see who is standing on the wrong side.',
     ability: { damage: 30, cooldownS: 3.5, range: 12, chargeS: 1.8, tags: ['Beam', 'Piercing'] },
     effect: { kind: 'beam', durationS: 1.5, tickS: 0.18, width: 0.8 },
-    stat: { label: 'Beam duration', base: 1.5, perLevel: 0.25, unit: 's' },
+    stat: { drivesEffect: 'durationS', label: 'Beam duration', base: 1.5, perLevel: 0.25, unit: 's' },
   },
   {
     id: 'whirlKick',
@@ -193,7 +193,7 @@ export const CARD_CATALOG: CardDefinition[] = [
     flavour: 'The kick, but you stopped caring which way they were coming from.',
     ability: { damage: 21, cooldownS: 4.5, range: 3.2, chargeS: 0, tags: ['Radial', 'Knockback'] },
     effect: { kind: 'burst', knockback: 10 },
-    stat: { label: 'Ring radius', base: 3.2, perLevel: 0.3, unit: 'm' },
+    stat: { drives: 'range', label: 'Ring radius', base: 3.2, perLevel: 0.3, unit: 'm' },
   },
   {
     id: 'depthCharge',
@@ -204,7 +204,7 @@ export const CARD_CATALOG: CardDefinition[] = [
     flavour: 'Diving used to be safe.',
     ability: { damage: 27, cooldownS: 6, range: 5, chargeS: 0, tags: ['Delayed', 'Anti-dive'] },
     effect: { kind: 'mine', fuseS: 2, radius: 2.8, hitsSubmerged: true, submergedBonus: 2.2 },
-    stat: { label: 'Blast radius', base: 2.8, perLevel: 0.35, unit: 'm' },
+    stat: { drivesEffect: 'radius', label: 'Blast radius', base: 2.8, perLevel: 0.35, unit: 'm' },
   },
   {
     id: 'maelstrom',
@@ -217,6 +217,7 @@ export const CARD_CATALOG: CardDefinition[] = [
     effect: {
       kind: 'zone',
       flavour: 'whirlpool',
+      radius: 4,
       durationS: 4.5,
       dps: 11,
       pullSpeed: 9,
@@ -224,7 +225,7 @@ export const CARD_CATALOG: CardDefinition[] = [
       hitsSubmerged: true,
       atSelf: true,
     },
-    stat: { label: 'Whirlpool radius', base: 4, perLevel: 0.6, unit: 'm' },
+    stat: { drivesEffect: 'radius', label: 'Whirlpool radius', base: 4, perLevel: 0.6, unit: 'm' },
   },
   {
     id: 'geyserField',
@@ -235,7 +236,7 @@ export const CARD_CATALOG: CardDefinition[] = [
     flavour: 'You cannot dodge all of them. You can dodge most of them.',
     ability: { damage: 33, cooldownS: 60, range: 16, chargeS: 0, tags: ['Arena-wide', 'Launch'] },
     effect: { kind: 'geysers', count: 6, radius: 2.2, warnS: 0.75, knockback: 9 },
-    stat: { label: 'Geysers', base: 6, perLevel: 1, unit: '' },
+    stat: { drivesEffect: 'count', label: 'Geysers', base: 6, perLevel: 1, unit: '' },
   },
 
   /* ------------------------------------------------------------- legendary */
@@ -283,7 +284,7 @@ export const CARD_CATALOG: CardDefinition[] = [
     flavour: 'Whatever lives at the bottom of this pool is on your side today.',
     ability: { damage: 24, cooldownS: 9, range: 7, chargeS: 0.5, tags: ['Grab', 'Drowns'] },
     effect: { kind: 'grab', holdS: 2, flavour: 'tentacle', drowns: true },
-    stat: { label: 'Hold duration', base: 2, perLevel: 0.3, unit: 's' },
+    stat: { drivesEffect: 'holdS', label: 'Hold duration', base: 2, perLevel: 0.3, unit: 's' },
   },
   {
     id: 'hurricane',
@@ -299,6 +300,7 @@ export const CARD_CATALOG: CardDefinition[] = [
     effect: {
       kind: 'zone',
       flavour: 'poison',
+      radius: 8,
       durationS: 4,
       dps: 16,
       pullSpeed: 3,
@@ -306,7 +308,7 @@ export const CARD_CATALOG: CardDefinition[] = [
       hitsSubmerged: true,
       atSelf: true,
     },
-    stat: { label: 'Storm duration', base: 4, perLevel: 0.5, unit: 's' },
+    stat: { drivesEffect: 'durationS', label: 'Storm duration', base: 4, perLevel: 0.5, unit: 's' },
   },
   {
     id: 'leviathanCall',
@@ -338,8 +340,8 @@ export const CARD_CATALOG: CardDefinition[] = [
     description: 'Spread a slick of green algae. It stings and clings to whoever wades in.',
     flavour: 'It was already growing. You just encouraged it.',
     ability: { damage: 12, cooldownS: 5.5, range: 4.5, chargeS: 0, tags: ['Zone', 'Over time'] },
-    effect: { kind: 'zone', flavour: 'poison', durationS: 4.5, dps: 7, slow: 0.7 },
-    stat: { label: 'Slick duration', base: 4.5, perLevel: 0.6, unit: 's' },
+    effect: { kind: 'zone', flavour: 'poison', radius: 2.6, durationS: 4.5, dps: 7, slow: 0.7 },
+    stat: { drivesEffect: 'durationS', label: 'Slick duration', base: 4.5, perLevel: 0.6, unit: 's' },
   },
   {
     id: 'brineTrap',
@@ -349,8 +351,8 @@ export const CARD_CATALOG: CardDefinition[] = [
     description: 'Lob a pocket of scalding brine that bursts into a burning patch of water.',
     flavour: 'Salt does not dissolve so much as wait.',
     ability: { damage: 18, cooldownS: 4, range: 7.5, chargeS: 0.7, tags: ['Zone', 'Over time'] },
-    effect: { kind: 'zone', flavour: 'poison', durationS: 3.6, dps: 13 },
-    stat: { label: 'Patch damage', base: 13, perLevel: 2, unit: '/s' },
+    effect: { kind: 'zone', flavour: 'poison', radius: 2.4, durationS: 3.6, dps: 13 },
+    stat: { drivesEffect: 'dps', label: 'Patch damage', base: 13, perLevel: 2, unit: '/s' },
   },
 ];
 
@@ -462,22 +464,73 @@ export function abilityAtLevel(card: AbilityCard): AbilityCard['ability'] {
 }
 
 /**
- * Dev-only: a stat that drives an ability field must equal it at level 1.
+ * The card's **effect** at its current level.
  *
- * This is the invariant that broke — the two values were authored separately
- * and nothing tied them together. Checking it at import time means the next
- * card added with a mismatched pair fails loudly instead of silently rendering
- * two different damage numbers on two different screens.
+ * The companion to `abilityAtLevel`, and the reason levels are no longer
+ * cosmetic for most of the catalogue. `stat.drives` can only reach a field of
+ * `ability` — damage, range, cooldown, charge — so a card whose growing number
+ * was "Cloud duration" or "Blast radius" or "Geysers" printed a larger figure
+ * on its detail page at level 3 and behaved in the arena exactly as it had at
+ * level 1. Those numbers all live on `effect`, and `stat.drivesEffect` names
+ * which one; this applies it.
+ *
+ * Returns the authored effect unchanged when a card has nothing to scale, so
+ * callers can use it unconditionally.
+ */
+export function effectAtLevel(card: AbilityCard): AbilityCard['effect'] {
+  const key = card.stat.drivesEffect;
+  if (!key) return card.effect;
+  const source = card.effect as unknown as Record<string, unknown>;
+  if (typeof source[key] !== 'number') return card.effect;
+  return { ...card.effect, [key]: statAtLevel(card) } as AbilityCard['effect'];
+}
+
+/**
+ * Dev-only: a stat that drives a field must equal that field at level 1.
+ *
+ * This is the invariant that broke once already — the two values were authored
+ * separately and nothing tied them together, so a level-3 Water Jet advertised
+ * "Jet damage 18" while its card face and every deck total still said 14.
+ * Checking it at import time means the next card added with a mismatched pair
+ * fails loudly instead of silently showing two different numbers on two
+ * different screens.
+ *
+ * `drivesEffect` gets the same treatment plus an existence check, since it is
+ * a plain string rather than a checked key: a typo would otherwise be a stat
+ * that silently scales nothing, which is precisely the bug it exists to fix.
  */
 export function validateCards(): void {
   for (const card of CARD_CATALOG) {
-    const { drives } = card.stat;
-    if (!drives) continue;
-    if (card.ability[drives] !== card.stat.base) {
+    const { drives, drivesEffect, base, label } = card.stat;
+
+    if (drives && card.ability[drives] !== base) {
       console.error(
-        `[cards] ${card.id}: stat "${card.stat.label}" drives ability.${drives}, ` +
-          `but base ${card.stat.base} !== ability.${drives} ${card.ability[drives]}`,
+        `[cards] ${card.id}: stat "${label}" drives ability.${drives}, ` +
+          `but base ${base} !== ability.${drives} ${card.ability[drives]}`,
       );
+    }
+
+    if (drives && drivesEffect) {
+      console.error(
+        `[cards] ${card.id}: stat "${label}" sets both drives and drivesEffect; ` +
+          'one stat grows one number.',
+      );
+    }
+
+    if (drivesEffect) {
+      const value = (card.effect as unknown as Record<string, unknown>)[drivesEffect];
+      if (typeof value !== 'number') {
+        console.error(
+          `[cards] ${card.id}: stat "${label}" drives effect.${drivesEffect}, ` +
+            `which is ${value === undefined ? 'missing' : `not a number (${typeof value})`} ` +
+            `on a "${card.effect.kind}" effect.`,
+        );
+      } else if (value !== base) {
+        console.error(
+          `[cards] ${card.id}: stat "${label}" drives effect.${drivesEffect}, ` +
+            `but base ${base} !== effect.${drivesEffect} ${value}`,
+        );
+      }
     }
   }
 }
