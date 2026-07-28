@@ -1,4 +1,12 @@
 {
   "files": [],
-  "references": [{ "path": "./tsconfig.app.json" }, { "path": "./tsconfig.node.json" }]
+  "references": [{ "path": "./tsconfig.app.json" }, { "path": "./tsconfig.node.json" }],
+  // Mirrors the alias `tsconfig.app.json` declares. The build does not read
+  // this — `tsc -b` defers to the referenced projects — but tools that only
+  // look at the root config do, which is how the engine can be exercised
+  // headlessly (`bun` resolving `@/game/engine/...`) without a bundler.
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": { "@/*": ["./src/*"] }
+  }
 }

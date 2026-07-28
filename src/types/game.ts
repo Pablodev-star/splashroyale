@@ -156,6 +156,106 @@ export type Rarity = 'common' | 'rare' | 'epic' | 'legendary';
 export type AbilitySlot = 'attack1' | 'attack2' | 'ultimate';
 
 /**
+ * What an ability physically *does*, as data.
+ *
+ * Behaviour used to be inferred from the display tags: the engine looked for
+ * the word `Radial` or `Zone` in the chip list and picked one of three shapes
+ * — travelling shot, cone, or instant ring. Everything else was a
+ * re-skin. Chlorine Cloud claimed to burn "whoever stays in it" and in fact
+ * dealt its damage once, on cast, exactly like Swell; Depth Charge promised a
+ * two-second fuse and detonated immediately. Twenty-four cards, three
+ * behaviours, and text that described things the engine could not do.
+ *
+ * Each variant below is a distinct shape the engine implements outright, and
+ * the tags go back to being what they always should have been: labels. A card
+ * that lingers has `kind: 'zone'` and genuinely lingers.
+ */
+export type AbilityEffect =
+  /** A shot that travels. */
+  | {
+      kind: 'projectile';
+      /** Fired at once, fanned evenly across `spreadDeg`. */
+      shots?: number;
+      spreadDeg?: number;
+      /** Survives its first hit and keeps going. */
+      pierce?: boolean;
+      /** Steers toward the enemy — steers, so it can still be outrun. */
+      homing?: boolean;
+      /** Skims off the surface this many times, able to hit again after each. */
+      bounces?: number;
+      /** m/s. Defaults to the standard projectile speed. */
+      speed?: number;
+      knockback?: number;
+    }
+  /** Resolves instantly in a cone in front of the user. No travel time. */
+  | {
+      kind: 'melee';
+      arcDeg?: number;
+      knockback?: number;
+      /** Drags the target toward the user at this m/s. */
+      pull?: number;
+      hitsSubmerged?: boolean;
+    }
+  /** Resolves instantly in a ring centred on the user. */
+  | { kind: 'burst'; knockback?: number; hitsSubmerged?: boolean }
+  /**
+   * A patch of water that stays on the arena floor and works on whoever is
+   * standing in it, every tick, until it expires.
+   */
+  | {
+      kind: 'zone';
+      /** Drives both the look and the secondary behaviour. */
+      flavour: 'poison' | 'chlorine' | 'whirlpool';
+      durationS: number;
+      /** Health per second on the 0..100 card scale, applied continuously. */
+      dps: number;
+      /** Drags anyone inside toward the centre at this m/s. */
+      pullSpeed?: number;
+      /** Multiplies movement speed inside, 0..1. */
+      slow?: number;
+      /** Drops at the user's feet rather than at the end of their aim. */
+      atSelf?: boolean;
+      hitsSubmerged?: boolean;
+    }
+  /**
+   * A wall of water crossing the arena. Diving is the counter: it passes
+   * overhead, which is what makes a huge unavoidable-looking attack fair.
+   */
+  | {
+      kind: 'wave';
+      speed: number;
+      /** Half-width of the wall, in metres either side of its centre line. */
+      width: number;
+      /** m/s the wave shoves whoever it catches, along its travel direction. */
+      carrySpeed: number;
+      /** Metres it covers before dissipating. */
+      travel: number;
+    }
+  /** A sustained beam that keeps hitting for as long as it lasts. */
+  | { kind: 'beam'; durationS: number; tickS: number; width: number }
+  /** A charge that sinks, waits out a fuse, then detonates. */
+  | {
+      kind: 'mine';
+      fuseS: number;
+      radius: number;
+      hitsSubmerged?: boolean;
+      /** Extra damage multiplier against a submerged target. */
+      submergedBonus?: number;
+    }
+  /** Several eruptions across the arena, each telegraphed before it fires. */
+  | { kind: 'geysers'; count: number; radius: number; warnS: number; knockback?: number }
+  /** Seizes the nearest fighter and holds them still. */
+  | {
+      kind: 'grab';
+      holdS: number;
+      flavour: 'tentacle' | 'spout' | 'riptide';
+      /** Reels them in to the user instead of pinning them where they stand. */
+      pullToSelf?: boolean;
+      /** Holds them under: they cannot surface, and the lungs keep draining. */
+      drowns?: boolean;
+    };
+
+/**
  * A card as authored: what it does and what it costs, with no player state.
  *
  * Level, copies and ownership belong to the *player*, not the catalogue — two
@@ -186,6 +286,8 @@ export interface CardDefinition {
     /** Short effect tags, shown as chips: 'Knockback', 'Piercing', … */
     tags: string[];
   };
+  /** How it behaves in the arena. The engine dispatches on `effect.kind`. */
+  effect: AbilityEffect;
   /** The one number that grows with level, shown on the detail screen. */
   stat: {
     label: string;
