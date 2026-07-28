@@ -188,6 +188,15 @@ export interface AbilityCard {
     /** Added per level above 1. */
     perLevel: number;
     unit: string;
+    /**
+     * Which `ability` field this stat *is*, when it is one of them.
+     *
+     * Without this the level curve and the combat numbers are two independent
+     * copies of the same value, and they drift: a level-3 Water Jet would show
+     * "Jet damage 18" on its detail page while its card face and every deck
+     * total still said 14. `abilityAtLevel()` is the only reader.
+     */
+    drives?: 'damage' | 'range' | 'cooldownS' | 'chargeS';
   };
 }
 

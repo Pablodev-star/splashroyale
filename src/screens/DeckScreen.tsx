@@ -8,6 +8,7 @@ import {
   SLOT_HINT,
   SLOT_LABEL,
   SLOT_ORDER,
+  abilityAtLevel,
 } from '@/data/cards';
 import { MAX_DECKS, deckCards } from '@/data/decks';
 import { MAP_BY_ID } from '@/data/maps';
@@ -47,17 +48,25 @@ export function DeckScreen({ next }: DeckScreenProps) {
   const { decks, activeDeck, selectDeck, equip, renameDeck, createDeck, deleteDeck } = useDecks();
 
   const [picking, setPicking] = useState<AbilitySlot | null>(null);
-  const [renaming, setRenaming] = useState(false);
-  const [draftName, setDraftName] = useState('');
+  // The rename holds the deck it was opened for, not just a flag. Tracking only
+  // "am I renaming" and committing to `activeDeck.id` meant starting a rename,
+  // switching deck tabs and pressing Save renamed the *newly selected* deck
+  // with the first one's draft text.
+  const [renaming, setRenaming] = useState<{ deckId: string; name: string } | null>(null);
 
   const cards = deckCards(activeDeck);
   const map = next ? MAP_BY_ID[next.mapId] : undefined;
+  // Resolved from the id, so deleting the deck mid-rename drops the form back
+  // to the buttons instead of editing a deck that no longer exists.
+  const renamingTarget = renaming ? decks.find((deck) => deck.id === renaming.deckId) : undefined;
 
   // Deck totals. These are the numbers a player compares two decks with, so
-  // they are summed from the same `ability` fields the cards themselves show —
-  // there is no second source of truth to drift.
-  const totalDamage = cards.reduce((sum, card) => sum + (card?.ability.damage ?? 0), 0);
-  const slowest = cards.reduce((max, card) => Math.max(max, card?.ability.cooldownS ?? 0), 0);
+  // they come from `abilityAtLevel` — the same function the card faces and the
+  // detail page read, at the same level. Summing the raw level-1 `ability`
+  // instead made this deck report 51 damage while its three cards showed 59.
+  const totals = cards.map((card) => (card ? abilityAtLevel(card) : undefined));
+  const totalDamage = totals.reduce((sum, a) => sum + (a?.damage ?? 0), 0);
+  const slowest = totals.reduce((max, a) => Math.max(max, a?.cooldownS ?? 0), 0);
   const rarityMix = RARITY_ORDER.map((rarity) => ({
     rarity,
     count: cards.filter((card) => card?.rarity === rarity).length,
@@ -73,8 +82,9 @@ export function DeckScreen({ next }: DeckScreenProps) {
   };
 
   const commitRename = () => {
-    renameDeck(activeDeck.id, draftName);
-    setRenaming(false);
+    if (!renaming) return;
+    renameDeck(renaming.deckId, renaming.name);
+    setRenaming(null);
   };
 
   return (
@@ -256,21 +266,21 @@ export function DeckScreen({ next }: DeckScreenProps) {
             </PixelPanel>
 
             <PixelPanel title="Manage deck" className="animate-rise-in">
-              {renaming ? (
+              {renaming && renamingTarget ? (
                 <div className="flex items-end gap-2">
                   <PixelInput
-                    value={draftName}
-                    onChange={setDraftName}
+                    value={renaming.name}
+                    onChange={(name) => setRenaming({ deckId: renaming.deckId, name })}
                     onSubmit={commitRename}
-                    label="Deck name"
+                    label={`Rename "${renamingTarget.name}"`}
                     maxLength={16}
-                    placeholder={activeDeck.name}
+                    placeholder={renamingTarget.name}
                     className="flex-1"
                   />
                   <PixelButton variant="primary" size="md" icon="✓" onClick={commitRename}>
                     Save
                   </PixelButton>
-                  <PixelButton variant="ghost" size="md" onClick={() => setRenaming(false)}>
+                  <PixelButton variant="ghost" size="md" onClick={() => setRenaming(null)}>
                     Cancel
                   </PixelButton>
                 </div>
@@ -280,10 +290,7 @@ export function DeckScreen({ next }: DeckScreenProps) {
                     variant="secondary"
                     size="md"
                     icon="✎"
-                    onClick={() => {
-                      setDraftName(activeDeck.name);
-                      setRenaming(true);
-                    }}
+                    onClick={() => setRenaming({ deckId: activeDeck.id, name: activeDeck.name })}
                   >
                     Rename
                   </PixelButton>

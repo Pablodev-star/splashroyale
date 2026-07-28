@@ -1,6 +1,6 @@
 import type { CSSProperties, ReactNode } from 'react';
 import type { AbilityCard, Rarity } from '@/types/game';
-import { RARITY_LABEL, SLOT_GLYPH, SLOT_LABEL } from '@/data/cards';
+import { RARITY_LABEL, SLOT_GLYPH, SLOT_LABEL, abilityAtLevel } from '@/data/cards';
 import { cn } from '@/lib/cn';
 
 export type CardSize = 'sm' | 'md' | 'lg';
@@ -81,6 +81,8 @@ export function GameCard({
   const isEpic = !locked && rarity === 'epic';
   const isLegendary = !locked && rarity === 'legendary';
   const progress = card.copiesForNextLevel ? Math.min(1, card.copies / card.copiesForNextLevel) : 0;
+  // Levelled numbers, so the face and the detail page cannot disagree.
+  const ability = abilityAtLevel(card);
 
   const Element = onClick ? 'button' : 'div';
 
@@ -180,9 +182,9 @@ export function GameCard({
               so what it costs to use belongs on its face, not on a detail page. */}
           {!locked && size !== 'sm' && (
             <span className="text-mist/70 bg-abyss/60 absolute bottom-1 left-1 z-20 flex gap-1.5 px-1 py-0.5 text-[8px] tabular-nums">
-              <span title="Damage">◆{card.ability.damage}</span>
-              <span title="Cooldown">↻{card.ability.cooldownS}s</span>
-              <span title="Range">↔{card.ability.range}</span>
+              <span title="Damage">◆{ability.damage}</span>
+              <span title="Cooldown">↻{ability.cooldownS}s</span>
+              <span title="Range">↔{ability.range}</span>
             </span>
           )}
 

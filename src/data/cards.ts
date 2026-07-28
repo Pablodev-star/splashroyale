@@ -28,7 +28,7 @@ export const CARDS: AbilityCard[] = [
     copiesForNextLevel: 12,
     owned: true,
     ability: { damage: 14, cooldownS: 0.8, range: 7, chargeS: 0.9, tags: ['Charge'] },
-    stat: { label: 'Jet damage', base: 14, perLevel: 2, unit: '' },
+    stat: { drives: 'damage', label: 'Jet damage', base: 14, perLevel: 2, unit: '' },
   },
   {
     id: 'palmSplash',
@@ -43,7 +43,7 @@ export const CARDS: AbilityCard[] = [
     copiesForNextLevel: 12,
     owned: true,
     ability: { damage: 9, cooldownS: 0.35, range: 2.5, chargeS: 0, tags: ['Instant'] },
-    stat: { label: 'Slap damage', base: 9, perLevel: 1.5, unit: '' },
+    stat: { drives: 'damage', label: 'Slap damage', base: 9, perLevel: 1.5, unit: '' },
   },
   {
     id: 'undertowKick',
@@ -88,7 +88,7 @@ export const CARDS: AbilityCard[] = [
     copiesForNextLevel: 10,
     owned: true,
     ability: { damage: 26, cooldownS: 45, range: 6, chargeS: 0, tags: ['Radial', 'Knockback'] },
-    stat: { label: 'Wave damage', base: 26, perLevel: 4, unit: '' },
+    stat: { drives: 'damage', label: 'Wave damage', base: 26, perLevel: 4, unit: '' },
   },
   {
     id: 'bellyFlop',
@@ -103,7 +103,7 @@ export const CARDS: AbilityCard[] = [
     copiesForNextLevel: 10,
     owned: true,
     ability: { damage: 30, cooldownS: 40, range: 3.5, chargeS: 1.2, tags: ['Leap', 'Radial'] },
-    stat: { label: 'Impact damage', base: 30, perLevel: 5, unit: '' },
+    stat: { drives: 'damage', label: 'Impact damage', base: 30, perLevel: 5, unit: '' },
   },
 
   /* ------------------------------------------------------------------ rare */
@@ -120,7 +120,7 @@ export const CARDS: AbilityCard[] = [
     copiesForNextLevel: 8,
     owned: true,
     ability: { damage: 19, cooldownS: 1.1, range: 11, chargeS: 1.2, tags: ['Charge', 'Piercing'] },
-    stat: { label: 'Jet damage', base: 19, perLevel: 3, unit: '' },
+    stat: { drives: 'damage', label: 'Jet damage', base: 19, perLevel: 3, unit: '' },
   },
   {
     id: 'skipShot',
@@ -180,7 +180,7 @@ export const CARDS: AbilityCard[] = [
     copiesForNextLevel: 6,
     owned: true,
     ability: { damage: 34, cooldownS: 55, range: 16, chargeS: 0, tags: ['Arena-wide', 'Carries'] },
-    stat: { label: 'Surge damage', base: 34, perLevel: 5, unit: '' },
+    stat: { drives: 'damage', label: 'Surge damage', base: 34, perLevel: 5, unit: '' },
   },
   {
     id: 'chlorineCloud',
@@ -304,7 +304,7 @@ export const CARDS: AbilityCard[] = [
     copiesForNextLevel: 2,
     owned: true,
     ability: { damage: 36, cooldownS: 2.6, range: 10, chargeS: 2, tags: ['Charge', 'Suspends'] },
-    stat: { label: 'Spout damage', base: 36, perLevel: 6, unit: '' },
+    stat: { drives: 'damage', label: 'Spout damage', base: 36, perLevel: 6, unit: '' },
   },
   {
     id: 'stormLash',
@@ -319,7 +319,7 @@ export const CARDS: AbilityCard[] = [
     copiesForNextLevel: 2,
     owned: false,
     ability: { damage: 28, cooldownS: 2, range: 9, chargeS: 1.1, tags: ['Homing'] },
-    stat: { label: 'Lash damage', base: 28, perLevel: 5, unit: '' },
+    stat: { drives: 'damage', label: 'Lash damage', base: 28, perLevel: 5, unit: '' },
   },
   {
     id: 'tsunamiKick',
@@ -337,7 +337,7 @@ export const CARDS: AbilityCard[] = [
     // starting collection is the only thing that could quietly contradict it.
     owned: true,
     ability: { damage: 32, cooldownS: 7, range: 9, chargeS: 0, tags: ['Wave', 'Carries'] },
-    stat: { label: 'Wave reach', base: 9, perLevel: 1, unit: 'm' },
+    stat: { drives: 'range', label: 'Wave reach', base: 9, perLevel: 1, unit: 'm' },
   },
   {
     id: 'abyssalGrasp',
@@ -382,7 +382,7 @@ export const CARDS: AbilityCard[] = [
     copiesForNextLevel: 1,
     owned: false,
     ability: { damage: 55, cooldownS: 100, range: 8, chargeS: 1.5, tags: ['Single target', 'Drowns'] },
-    stat: { label: 'Strike damage', base: 55, perLevel: 8, unit: '' },
+    stat: { drives: 'damage', label: 'Strike damage', base: 55, perLevel: 8, unit: '' },
   },
 ];
 
@@ -432,3 +432,48 @@ export const SLOT_GLYPH: Record<AbilitySlot, string> = {
 export function cardsForSlot(slot: AbilitySlot): AbilityCard[] {
   return CARDS.filter((card) => card.slot === slot);
 }
+
+/** Level curve, rounded the way the UI prints it. */
+export function statAtLevel(card: AbilityCard, level = card.level): number {
+  const raw = card.stat.base + card.stat.perLevel * (level - 1);
+  return Number.isInteger(raw) ? raw : Number(raw.toFixed(1));
+}
+
+/**
+ * The card's combat numbers **at its current level**.
+ *
+ * `ability` is authored at level 1, and `stat` is the one number that grows.
+ * When the growing number *is* an ability field (`stat.drives`), reading
+ * `card.ability` directly means reading a stale level-1 value: a level-3 Water
+ * Jet showed "Jet damage 18" on its detail page while its card face and every
+ * deck total still said 14. Everything that displays or fights with these
+ * numbers goes through here, so there is one answer.
+ */
+export function abilityAtLevel(card: AbilityCard): AbilityCard['ability'] {
+  const { drives } = card.stat;
+  if (!drives) return card.ability;
+  return { ...card.ability, [drives]: statAtLevel(card) };
+}
+
+/**
+ * Dev-only: a stat that drives an ability field must equal it at level 1.
+ *
+ * This is the invariant that broke — the two values were authored separately
+ * and nothing tied them together. Checking it at import time means the next
+ * card added with a mismatched pair fails loudly instead of silently rendering
+ * two different damage numbers on two different screens.
+ */
+export function validateCards(): void {
+  for (const card of CARDS) {
+    const { drives } = card.stat;
+    if (!drives) continue;
+    if (card.ability[drives] !== card.stat.base) {
+      console.error(
+        `[cards] ${card.id}: stat "${card.stat.label}" drives ability.${drives}, ` +
+          `but base ${card.stat.base} !== ability.${drives} ${card.ability[drives]}`,
+      );
+    }
+  }
+}
+
+if (import.meta.env.DEV) validateCards();

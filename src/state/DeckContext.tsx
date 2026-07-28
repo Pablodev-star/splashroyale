@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
@@ -71,6 +72,15 @@ const DeckContext = createContext<DeckValue | null>(null);
 export function DeckProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<StoredState>(load);
 
+  // Mirrors the latest state for the one operation that has to answer
+  // synchronously. A `setState` updater is not guaranteed to have run by the
+  // time the setter returns, so `createDeck` cannot learn the new id from
+  // inside one — it would return null while the queued update went on to
+  // create the deck anyway.
+  const stateRef = useRef(state);
+  stateRef.current = state;
+  const seqRef = useRef(0);
+
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -104,19 +114,28 @@ export function DeckProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const createDeck = useCallback(() => {
-    let created: string | null = null;
-    setState((current) => {
-      if (current.decks.length >= MAX_DECKS) return current;
-      // Copying the active deck beats an empty one: the new deck is already
-      // playable, and editing from a working loadout is how decks actually get
-      // built.
-      const source = current.decks.find((deck) => deck.id === current.activeDeckId);
-      const base = source ?? current.decks[0];
-      created = `deck-${Date.now().toString(36)}`;
-      const deck: Deck = { id: created, name: nextDeckName(current.decks), cards: { ...base.cards } };
-      return { decks: [...current.decks, deck], activeDeckId: created };
-    });
-    return created;
+    const current = stateRef.current;
+    if (current.decks.length >= MAX_DECKS) return null;
+
+    // The id is minted here, before the update is queued, so the caller gets a
+    // real answer. The counter guards two creates landing in the same
+    // millisecond, which `Date.now()` alone would collide on.
+    seqRef.current += 1;
+    const id = `deck-${Date.now().toString(36)}-${seqRef.current.toString(36)}`;
+    // Copying the active deck beats an empty one: the new deck is already
+    // playable, and editing from a working loadout is how decks actually get
+    // built.
+    const base = current.decks.find((deck) => deck.id === current.activeDeckId) ?? current.decks[0];
+    const deck: Deck = { id, name: nextDeckName(current.decks), cards: { ...base.cards } };
+
+    setState((latest) =>
+      // Re-checked against the state the reducer actually sees: the ref can be
+      // one update behind if two creates fire before a re-render.
+      latest.decks.length >= MAX_DECKS || latest.decks.some((d) => d.id === id)
+        ? latest
+        : { decks: [...latest.decks, deck], activeDeckId: id },
+    );
+    return id;
   }, []);
 
   const deleteDeck = useCallback((id: string) => {

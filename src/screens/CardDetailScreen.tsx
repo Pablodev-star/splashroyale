@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { CARD_BY_ID, RARITY_LABEL, SLOT_LABEL } from '@/data/cards';
+import { CARD_BY_ID, RARITY_LABEL, SLOT_LABEL, abilityAtLevel, statAtLevel } from '@/data/cards';
 import { canEquip } from '@/data/decks';
 import type { AbilityCard, Rarity } from '@/types/game';
 import { GameCard } from '@/components/cards/GameCard';
@@ -49,10 +49,9 @@ function AbilityStat({ label, value, tone }: { label: string; value: string; ton
   );
 }
 
-function statAtLevel(card: AbilityCard, level: number): string {
-  const raw = card.stat.base + card.stat.perLevel * (level - 1);
-  const rounded = Number.isInteger(raw) ? raw : Number(raw.toFixed(1));
-  return `${rounded}${card.stat.unit}`;
+/** The stat as printed: the shared level curve plus this card's unit. */
+function statText(card: AbilityCard, level: number): string {
+  return `${statAtLevel(card, level)}${card.stat.unit}`;
 }
 
 /**
@@ -83,6 +82,7 @@ export function CardDetailScreen({ cardId }: CardDetailScreenProps) {
   const ready = card.copies >= card.copiesForNextLevel && !maxed;
   const upgradeCost = UPGRADE_BASE[card.rarity] * card.level;
   const isLegendary = card.rarity === 'legendary';
+  const ability = abilityAtLevel(card);
   const equipped = activeDeck.cards[card.slot] === card.id;
   const equippable = canEquip(card, card.slot);
 
@@ -153,18 +153,18 @@ export function CardDetailScreen({ cardId }: CardDetailScreenProps) {
 
                 {/* The four numbers that decide whether it belongs in a deck. */}
                 <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                  <AbilityStat label="Damage" value={`${card.ability.damage}`} tone={TEXT[card.rarity]} />
-                  <AbilityStat label="Cooldown" value={`${card.ability.cooldownS}s`} />
-                  <AbilityStat label="Range" value={`${card.ability.range}m`} />
+                  <AbilityStat label="Damage" value={`${ability.damage}`} tone={TEXT[card.rarity]} />
+                  <AbilityStat label="Cooldown" value={`${ability.cooldownS}s`} />
+                  <AbilityStat label="Range" value={`${ability.range}m`} />
                   <AbilityStat
                     label="Charge"
-                    value={card.ability.chargeS === 0 ? 'Instant' : `${card.ability.chargeS}s`}
+                    value={ability.chargeS === 0 ? 'Instant' : `${ability.chargeS}s`}
                   />
                 </div>
 
-                {card.ability.tags.length > 0 && (
+                {ability.tags.length > 0 && (
                   <div className="mt-2 flex flex-wrap gap-1.5">
-                    {card.ability.tags.map((tag) => (
+                    {ability.tags.map((tag) => (
                       <span
                         key={tag}
                         className="bg-ocean text-mist/75 px-1.5 py-0.5 text-[9px] tracking-[0.12em] uppercase"
@@ -193,7 +193,7 @@ export function CardDetailScreen({ cardId }: CardDetailScreenProps) {
                   <div>
                     <div className="text-mist/50 text-[9px] tracking-[0.16em] uppercase">Now</div>
                     <div className={cn('text-2xl tabular-nums', TEXT[card.rarity])}>
-                      {statAtLevel(card, card.level)}
+                      {statText(card, card.level)}
                     </div>
                   </div>
 
@@ -205,7 +205,7 @@ export function CardDetailScreen({ cardId }: CardDetailScreenProps) {
                           Next level
                         </div>
                         <div className="text-hp text-2xl tabular-nums">
-                          {statAtLevel(card, card.level + 1)}
+                          {statText(card, card.level + 1)}
                         </div>
                       </div>
                     </>
@@ -298,7 +298,7 @@ export function CardDetailScreen({ cardId }: CardDetailScreenProps) {
               </div>
               <p className="text-[11px] leading-snug">
                 {card.name} would reach level {card.level + 1} — {card.stat.label.toLowerCase()}{' '}
-                {statAtLevel(card, card.level + 1)}.
+                {statText(card, card.level + 1)}.
               </p>
               <p className="text-mist/50 text-[10px]">
                 The full power-up ceremony arrives with the progression block.
