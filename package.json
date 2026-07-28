@@ -12,8 +12,10 @@
     "lint": "tsc -b"
   },
   "dependencies": {
+    "@types/three": "^0.185.1",
     "react": "^19.2.0",
-    "react-dom": "^19.2.0"
+    "react-dom": "^19.2.0",
+    "three": "^0.185.1"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.0",

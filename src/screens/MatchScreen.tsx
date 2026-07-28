@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { GameMode, MapId, MatchOutcome } from '@/types/game';
 import { MAP_BY_ID } from '@/data/maps';
 import { CHARACTERS } from '@/data/characters';
-import { ArenaView } from '@/components/match/ArenaView';
+import { Arena3D, type Arena3DHandle, type SceneFighter } from '@/game/scene';
+import { useWaterReactions, type WaterActor } from '@/components/water/useWaterReactions';
+import { useSplashEvents, type SplashEvent } from '@/game/vfx';
 import { useMatchSimulation } from '@/components/match/useMatchSimulation';
 import { GameHud } from '@/components/hud/GameHud';
 import { TouchControls } from '@/components/hud/TouchControls';
@@ -35,6 +37,7 @@ export function MatchScreen({ mode, mapId, roomCode }: MatchScreenProps) {
   const [paused, setPaused] = useState(false);
   const [charging, setCharging] = useState(false);
   const [submerged, setSubmerged] = useState(false);
+  const arenaRef = useRef<Arena3DHandle | null>(null);
 
   const { hud, fighters, projectiles, splashes, finished } = useMatchSimulation({
     playerName: settings.playerName,
@@ -44,6 +47,45 @@ export function MatchScreen({ mode, mapId, roomCode }: MatchScreenProps) {
     charging,
     submerged,
   });
+
+  // --- Simulation -> 3D scene (Block 3A) ---------------------------------
+  // The 2D arena mapped facing onto four screen-space names; in 3D facing is a
+  // world angle, and which sprite orientation that becomes depends on where the
+  // camera happens to be standing. The opponent is pointed at the player, which
+  // is both what a fighter would do and what makes the four orientations
+  // visibly cycle as the camera orbits.
+  const sceneFighters = useMemo<SceneFighter[]>(() => {
+    const self = fighters.find((f) => f.id === 'self');
+    return fighters.map((fighter) => ({
+      id: fighter.id,
+      x: fighter.x,
+      y: fighter.y,
+      facing:
+        fighter.id === 'self' || !self
+          ? undefined
+          : Math.atan2(self.y - fighter.y, self.x - fighter.x),
+      animation: fighter.animation ?? (fighter.submerged ? 'dive' : 'idle'),
+      submerged: fighter.submerged,
+      isSelf: fighter.id === 'self',
+      palette: { primary: fighter.colors.primary, accent: fighter.colors.secondary },
+    }));
+  }, [fighters]);
+
+  // In 3D the water plane spans exactly the arena, so actor coordinates need no
+  // rebasing — unlike the 2D stage, where the fighter layer started partway
+  // down the canvas and every position had to be offset first.
+  const actors = useMemo<WaterActor[]>(
+    () => [
+      ...fighters.map((f) => ({ id: f.id, x: f.x, y: f.y, submerged: f.submerged })),
+      ...projectiles.map((p) => ({ id: `fx-${p.id}`, x: p.x, y: p.y })),
+    ],
+    [fighters, projectiles],
+  );
+
+  useWaterReactions(arenaRef, actors);
+  // Both targets are the same object: the 3D scene throws the droplets *and*
+  // owns the water they land in.
+  useSplashEvents(arenaRef, arenaRef, splashes as SplashEvent[]);
 
   /** Demo keyboard bindings so the HUD can be exercised without a controller. */
   useEffect(() => {
@@ -85,13 +127,7 @@ export function MatchScreen({ mode, mapId, roomCode }: MatchScreenProps) {
 
   return (
     <div className="bg-abyss relative h-full w-full overflow-hidden">
-      <ArenaView
-        map={map}
-        fighters={fighters}
-        projectiles={projectiles}
-        splashes={splashes}
-        className="absolute inset-0"
-      />
+      <Arena3D map={map} fighters={sceneFighters} className="absolute inset-0" ref={arenaRef} />
 
       <GameHud
         state={hud}
