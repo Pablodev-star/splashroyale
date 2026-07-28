@@ -65,6 +65,7 @@ src/
     sprites/               Pixel rig, keyframed animations, atlas bake, playback
     vfx/                   Splash tiers, droplet sim, splash events
     scene/                 Three.js arena: billboards, water plane, orbit camera
+    engine/                Match simulation: movement, abilities, rounds, bot
 
   components/
     ui/                    Design-system primitives. No game knowledge.
@@ -104,7 +105,7 @@ narrow, typed interface.
 | **2C — Splash animations** (done)     | `game/vfx/**`                                          | Charge value from Block 3, ripple API from 2B.                                          |
 | **3A — 3D arena** (done)              | `game/scene/**`                                        | Sprite atlas from 2A, water renderer from 2B, splash tiers from 2C.                     |
 | **3B — Cards as abilities / decks** (done) | `data/cards.ts`, `data/decks.ts`, `state/DeckContext.tsx`, deck screens | The equipped deck feeds the match HUD and, from 3C, the engine.        |
-| **3C — Controls / physics / combat**  | `game/**`                                              | Renders into the `<MatchScreen />` slot and feeds `HudState`.                            |
+| **3C — Controls / physics / combat** (done) | `game/engine/**`                                  | Deck from 3B, scene from 3A, splash tiers from 2C; produces `HudState`.                |
 | **4 — Cards, shop, packs**            | `features/progression/**`                              | `ShopScreen`/`PackPreviewScreen`/`CollectionScreen`, `data/cards.ts`, `data/packs.ts`. |
 | **5 — Card detail & level-up**        | `screens/CardDetailScreen.tsx`                         | The `cardDetail` route and card types from Block 4.                                    |
 
@@ -224,6 +225,12 @@ worth knowing before extending it:
   off at the chest.
 - Splash droplets are world-space points, not the old screen overlay: a 2D
   overlay cannot line up with a camera that orbits.
+- **Fighters within `CAMERA_CULL_DISTANCE` of the lens are not drawn.** The
+  camera sits seven units behind the player, so an opponent circling their back
+  walks through it; measured against the real engine, the bot gets within 0.18m
+  of the camera and in front of it. A billboard that close is a screen-filling
+  smear. Culling rather than fading, because a semi-transparent sprite is
+  off-palette — and the minimap and nameplate still track them.
 
 ### 4.5 The deck contract (Block 3B → Block 3C)
 
@@ -260,7 +267,50 @@ Where the deck shows up in a match: the ability rail beside the minimap on
 desktop, the two touch pads and the ultimate tank on phones. Those are labels
 only — nothing fires until 3C.
 
-### 4.6 The HUD contract (Block 1 → Block 3)
+### 4.6 The combat contract (Block 3C)
+
+```ts
+const { snapshot, hud, cooldowns, inputRef } = useMatchEngine({ deck, durationMs, paused });
+inputRef.current.moveX = 1;      // held, screen space
+inputRef.current.attack2 = true; // one-shot, consumed by the next tick
+```
+
+`MatchEngine` is framework-free like `ArenaScene` — no React, no DOM, no
+Three.js. It is driven by `step(dt, intents)` and read through `snapshot()`,
+which is what lets the whole rule set be verified by playing matches in a plain
+loop rather than by inspecting a diff (56 checks, swept across 20 seeds).
+
+- **A card is the move, not a modifier.** There is no hard-coded basic attack:
+  attack 1 does whatever card sits in that slot, read through `abilityAtLevel`
+  so the damage a card advertises is the damage it deals. Behaviour comes from
+  the ability **tags** — `Piercing` survives its first hit, `Knockback` pushes,
+  `Pull`/`Grab` drags, `Anti-dive`/`Surfaces`/`Drowns` reach submerged targets,
+  `Radial`/`Arena-wide` resolve everywhere at once. A new card is data.
+- **Range decides the shape.** At or under `MELEE_RANGE` an ability resolves
+  instantly in a cone; beyond it a projectile travels and can be dodged.
+- **Held versus pressed.** Attack 1 is *held* — it charges and fires on release,
+  scaling damage by the charge. Attack 2 and the ultimate fire on a rising edge,
+  so the screen writes `true` once and the loop clears it. A flag left `true`
+  across frames fires exactly once and then never again.
+- **Camera yaw is the only facing.** `worldMove()` and `facingFromYaw()` in
+  `camera.ts` are pure functions precisely so the sign conventions can be tested;
+  a guessed sign inverts the controls only after the camera has been dragged
+  half a turn, which no amount of reading catches.
+- **Diving is a trade with a clock.** Submerged you move slower, cannot attack,
+  and take `SUBMERGED_DAMAGE_FACTOR` damage from anything that can reach you.
+  Empty lungs force you up, cost health once, and leave you `winded` until
+  oxygen recovers — without that floor the fighter re-dives on the next frame
+  and the sprite strobes between poses.
+- **The bot plays by the same rules.** Its deck is its moveset, it charges, it
+  runs out of breath, it cannot fire while submerged, and it reads nothing the
+  player cannot see. Its aim error is expressed in **metres of lateral miss**
+  rather than radians, so "does it hit" stays comparable to `HIT_RADIUS` at
+  every range; a fixed angle made it deadly up close and hopeless far away.
+
+`tuning.ts` holds every balance number in metres and seconds, matching the card
+`ability` fields exactly — a card that says `range: 7` reaches seven metres.
+
+### 4.7 The HUD contract (Block 1 → Block 3)
 
 `HudState` in `src/types/game.ts` is the single hand-off point. Block 3 must
 produce this object every frame; the HUD is otherwise pure and stateless:
@@ -275,7 +325,7 @@ interface HudState {
 }
 ```
 
-### 4.7 The navigation contract
+### 4.8 The navigation contract
 
 Screens never import each other. They call `useNavigation()`:
 

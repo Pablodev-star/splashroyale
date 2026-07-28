@@ -9,13 +9,13 @@ export const MAX_DECKS = 6;
  * commons, so is any mix. The only constraint is structural — one card per slot,
  * equipped in the slot it was authored for, and owned.
  */
-export function canEquip(card: AbilityCard, slot: AbilitySlot): boolean {
-  return card.slot === slot && card.owned;
+export function canEquip(card: AbilityCard, slot: AbilitySlot, ownedOnly = true): boolean {
+  return card.slot === slot && (!ownedOnly || card.owned);
 }
 
-/** First owned card for a slot — the fallback when a saved deck loses a card. */
-export function defaultCardForSlot(slot: AbilitySlot): AbilityCard | undefined {
-  return CARDS.find((card) => canEquip(card, slot));
+/** First usable card for a slot — the fallback when a saved deck loses a card. */
+export function defaultCardForSlot(slot: AbilitySlot, ownedOnly = true): AbilityCard | undefined {
+  return CARDS.find((card) => canEquip(card, slot, ownedOnly));
 }
 
 export function deckCards(deck: Deck): (AbilityCard | undefined)[] {
@@ -40,11 +40,12 @@ export function isDeckComplete(deck: Deck): boolean {
  * Returns `null` only when a slot has no usable card at all, which cannot happen
  * while the commons are ownable but is not worth crashing over if it does.
  */
-export function sanitiseDeck(deck: Deck): Deck | null {
+export function sanitiseDeck(deck: Deck, ownedOnly = true): Deck | null {
   const cards = {} as Record<AbilitySlot, string>;
   for (const slot of SLOT_ORDER) {
     const saved = CARD_BY_ID[deck.cards?.[slot]];
-    const card = saved && canEquip(saved, slot) ? saved : defaultCardForSlot(slot);
+    const card =
+      saved && canEquip(saved, slot, ownedOnly) ? saved : defaultCardForSlot(slot, ownedOnly);
     if (!card) return null;
     cards[slot] = card.id;
   }
@@ -68,6 +69,21 @@ export const DEFAULT_DECKS: Deck[] = [
     cards: { attack1: 'leviathanSpout', attack2: 'tsunamiKick', ultimate: 'hurricane' },
   },
 ];
+
+/**
+ * What the bots bring (Block 3C).
+ *
+ * Not constrained by `owned` — the player's collection is the player's problem,
+ * and a bot restricted to the starting cards would never show what the rest of
+ * the catalogue does. Chosen to be a fair, readable fight: a ranged main attack
+ * that has to be charged, a short-range disengage, and an ultimate that
+ * telegraphs itself by crossing the whole arena.
+ */
+export const BOT_DECK: Deck = {
+  id: 'bot',
+  name: 'Bot Alpha',
+  cards: { attack1: 'pressureJet', attack2: 'undertowKick', ultimate: 'tidalSurge' },
+};
 
 /** Name for the next deck the player creates: "Deck 3", "Deck 4", … */
 export function nextDeckName(existing: Deck[]): string {

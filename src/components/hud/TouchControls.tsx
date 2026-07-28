@@ -12,6 +12,8 @@ export interface TouchControlsProps {
   attackLabel?: string;
   /** Equipped attack-2 name — the pad the deck's second attack sits on. */
   kickLabel?: string;
+  /** Seconds left on attack 2, so the pad can show it is not ready. */
+  kickCooldown?: number;
   submerged?: boolean;
   /** Mirrors the layout for left-handed players (Settings). */
   mirrored?: boolean;
@@ -32,6 +34,7 @@ export function TouchControls({
   onDiveToggle,
   attackLabel = 'Attack',
   kickLabel = 'Kick',
+  kickCooldown = 0,
   submerged = false,
   mirrored = false,
   className,
@@ -100,7 +103,13 @@ export function TouchControls({
       {/* Action pads. Fixed width so an equipped ability with a long name
           relabels the pad without moving the pads under the player's thumb. */}
       <div className="pointer-events-auto grid w-[176px] shrink-0 grid-cols-2 gap-2">
-        <ActionPad label={kickLabel} glyph="✦" onPress={onKick} tone="secondary" />
+        <ActionPad
+          label={kickLabel}
+          glyph="✦"
+          onPress={onKick}
+          tone="secondary"
+          cooling={kickCooldown > 0.05}
+        />
         <ActionPad
           label={submerged ? 'Surface' : 'Dive'}
           glyph={submerged ? '^' : 'v'}
@@ -124,6 +133,9 @@ interface ActionPadProps {
   label: string;
   glyph: string;
   tone: 'primary' | 'secondary' | 'oxygen';
+  /** Dims the pad while the ability is recharging. Still pressable — the engine
+   *  is the authority on whether it fires, and a dead button reads as broken. */
+  cooling?: boolean;
   onPress?: () => void;
   onPressStart?: () => void;
   onPressEnd?: () => void;
@@ -143,6 +155,7 @@ function ActionPad({
   onPress,
   onPressStart,
   onPressEnd,
+  cooling = false,
   className,
 }: ActionPadProps) {
   return (
@@ -157,6 +170,7 @@ function ActionPad({
         'pixel-border-thin flex h-14 min-w-0 touch-none flex-col items-center justify-center',
         'transition-transform duration-[90ms] ease-[steps(2,jump-none)] active:translate-y-[2px]',
         PAD_TONE[tone],
+        cooling && 'opacity-45 saturate-50',
         className,
       )}
     >
