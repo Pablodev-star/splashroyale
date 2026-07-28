@@ -23,6 +23,7 @@ import type { GameMap } from '@/types/game';
 import { orientationFor } from './orientation';
 import { createSpriteTexture, type SpriteFrameTexture } from './spriteTexture';
 import { buildScenery, type Scenery } from './scenery';
+import { EffectLayer, EMPTY_EFFECTS, type SceneEffects } from './effects';
 
 /**
  * The 3D arena (Block 3A).
@@ -206,6 +207,10 @@ export class ArenaScene {
   private readonly projectilePositions = new Float32Array(MAX_PROJECTILES * 3);
   private readonly projectilePoints: Points;
 
+  /** Zones, waves, beams, mines and geysers (Block 7B). */
+  private readonly effectLayer = new EffectLayer(ARENA_SIZE);
+  private effects: SceneEffects = EMPTY_EFFECTS;
+
   constructor(
     canvas: HTMLCanvasElement,
     { map, pixelSize = 3, waterSize = WATER_TEXTURE_SIZE, waterFps = WATER_FPS }: ArenaSceneOptions,
@@ -295,6 +300,7 @@ export class ArenaScene {
     );
     this.projectilePoints.frustumCulled = false;
     this.scene.add(this.projectilePoints);
+    this.scene.add(this.effectLayer.group);
 
     this.paintWater(0);
   }
@@ -310,6 +316,16 @@ export class ArenaScene {
     }
     this.projectileGeometry.setDrawRange(0, count);
     this.projectileGeometry.attributes.position.needsUpdate = true;
+  }
+
+  /**
+   * Hands the frame's lingering effects to the effect layer.
+   *
+   * Stored rather than applied here: the layer animates (spin, flicker, the
+   * geyser's rise) and so needs the frame delta, which only `render` has.
+   */
+  setEffects(effects: SceneEffects): void {
+    this.effects = effects;
   }
 
   /**
@@ -471,6 +487,7 @@ export class ArenaScene {
     this.updateCamera();
     this.updateWater(dt);
     this.updateDroplets(dt);
+    this.effectLayer.update(this.effects, dt);
     this.updateFighters(dt, fighters);
     this.renderer.render(this.scene, this.camera);
   }
@@ -576,6 +593,8 @@ export class ArenaScene {
   dispose(): void {
     this.scene.remove(this.scenery.root);
     this.scenery.dispose();
+    this.scene.remove(this.effectLayer.group);
+    this.effectLayer.dispose();
     for (const node of this.fighters.values()) {
       this.scene.remove(node.mesh);
       node.mesh.geometry.dispose();

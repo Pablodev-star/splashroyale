@@ -164,6 +164,22 @@ export function MatchScreen({ mode, mapId, roomCode }: MatchScreenProps) {
     [snapshot.fighters],
   );
 
+  // The snapshot's effect arrays are already normalised and renderer-shaped, so
+  // this is a regroup, not a conversion. The engine rebuilds its snapshot every
+  // tick, so this recomputes every tick too — the memo is only here to keep one
+  // stable object within a render, matching how `sceneFighters` and `actors`
+  // are handled either side of it.
+  const sceneEffects = useMemo(
+    () => ({
+      zones: snapshot.zones,
+      waves: snapshot.waves,
+      beams: snapshot.beams,
+      mines: snapshot.mines,
+      geysers: snapshot.geysers,
+    }),
+    [snapshot.zones, snapshot.waves, snapshot.beams, snapshot.mines, snapshot.geysers],
+  );
+
   const actors = useMemo<WaterActor[]>(
     () => [
       ...snapshot.fighters.map((f) => ({
@@ -215,6 +231,7 @@ export function MatchScreen({ mode, mapId, roomCode }: MatchScreenProps) {
         map={map}
         fighters={sceneFighters}
         projectiles={snapshot.projectiles}
+        effects={sceneEffects}
         onYawChange={onYawChange}
         className="absolute inset-0"
         ref={arenaRef}

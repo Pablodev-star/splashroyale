@@ -4,6 +4,7 @@ import { useReducedMotion } from '@/hooks/useReducedMotion';
 import type { GameMap } from '@/types/game';
 import type { SplashTier } from '@/game/vfx';
 import { ArenaScene, type SceneFighter, type SceneProjectile } from './ArenaScene';
+import { EMPTY_EFFECTS, type SceneEffects } from './effects';
 import { cn } from '@/lib/cn';
 
 export interface Arena3DHandle {
@@ -19,6 +20,8 @@ export interface Arena3DProps {
   map: GameMap;
   fighters: SceneFighter[];
   projectiles?: SceneProjectile[];
+  /** Lingering ability effects — zones, waves, beams, mines, geysers. */
+  effects?: SceneEffects;
   /** Fired when the player drags the camera, since that also turns the fighter. */
   onYawChange?: (yaw: number) => void;
   children?: ReactNode;
@@ -41,6 +44,7 @@ export function Arena3D({
   map,
   fighters,
   projectiles = [],
+  effects = EMPTY_EFFECTS,
   onYawChange,
   children,
   className,
@@ -56,6 +60,8 @@ export function Arena3D({
   fightersRef.current = fighters;
   const projectilesRef = useRef(projectiles);
   projectilesRef.current = projectiles;
+  const effectsRef = useRef(effects);
+  effectsRef.current = effects;
   // Read inside the resize callback, which is created once with the scene.
   const reducedMotionRef = useRef(reducedMotion);
   reducedMotionRef.current = reducedMotion;
@@ -81,6 +87,7 @@ export function Arena3D({
       if (reducedMotionRef.current) {
         scene.setFighters(fightersRef.current);
         scene.setProjectiles(projectilesRef.current);
+        scene.setEffects(effectsRef.current);
         scene.render(0, fightersRef.current);
       }
     };
@@ -147,6 +154,7 @@ export function Arena3D({
       if (!scene) return;
       scene.setFighters(fightersRef.current);
       scene.setProjectiles(projectilesRef.current);
+      scene.setEffects(effectsRef.current);
       scene.render(delta, fightersRef.current);
     },
     // Honours prefers-reduced-motion like every other animated surface in the
@@ -163,8 +171,9 @@ export function Arena3D({
     if (!scene) return;
     scene.setFighters(fighters);
     scene.setProjectiles(projectiles);
+    scene.setEffects(effects);
     scene.render(0, fighters);
-  }, [reducedMotion, fighters, projectiles]);
+  }, [reducedMotion, fighters, projectiles, effects]);
 
   return (
     <div
