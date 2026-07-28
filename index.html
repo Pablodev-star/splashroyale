@@ -67,6 +67,12 @@
             lastError = boot && boot.message ? boot.message : String(boot);
           }
 
+          // Third channel: where main.tsx got to before stalling, even when
+          // nothing threw. 'module-evaluating' (or unset) means the module
+          // script never ran at all; 'importing-app' or 'rendering' stuck
+          // there means it hung awaiting something instead of erroring.
+          var bootStage = window.__SPLASH_BOOT_STAGE__ || '(module script never ran)';
+
           var box = document.createElement('div');
           box.setAttribute('data-diagnostic', 'blank-page-fallback');
           box.setAttribute(
@@ -125,6 +131,7 @@
           );
           detail.textContent =
             'Captured error: ' + (lastError || '(none — script may not have run at all)') + '\n' +
+            'Boot stage reached: ' + bootStage + '\n' +
             'URL: ' + location.href + '\n' +
             'User agent: ' + navigator.userAgent + '\n' +
             'localStorage works: ' + storageWorks + '\n' +
