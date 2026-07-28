@@ -44,7 +44,16 @@ import { buildScenery, type Scenery } from './scenery';
  */
 const ARENA_SIZE = 16;
 
-/** Water texture resolution. Square, so a ripple is round on the plane. */
+/**
+ * Water texture resolution. Square, so a ripple is round on the plane.
+ *
+ * This is the cost that matters: `pixelSize` shrinks the *WebGL* buffer, but
+ * the water is a CPU-painted `ImageData` whose cost is this number squared,
+ * repainted at `WATER_FPS` on the main thread regardless of how large the canvas
+ * ends up on screen. A thumbnail rendering at 192 is doing the same 37k pixel
+ * iterations per repaint as the full-screen match — three of them side by side
+ * on the map picker cost more than the match itself.
+ */
 const WATER_TEXTURE_SIZE = 192;
 
 /**
@@ -146,6 +155,14 @@ export interface ArenaSceneOptions {
   map: GameMap;
   /** CSS pixels per rendered pixel. Larger = chunkier and cheaper. */
   pixelSize?: number;
+  /**
+   * Water texture edge, in texels. Defaults to the full-match resolution;
+   * thumbnails pass something far smaller, since the cost is quadratic in this
+   * and has nothing to do with how big the canvas is.
+   */
+  waterSize?: number;
+  /** Water repaints per second. Lower for previews, where nobody is looking. */
+  waterFps?: number;
 }
 
 export class ArenaScene {
@@ -163,6 +180,8 @@ export class ArenaScene {
 
   private readonly map: GameMap;
   private readonly pixelSize: number;
+  private readonly waterSize: number;
+  private readonly waterFps: number;
   private readonly scenery: Scenery;
 
   /** Camera azimuth. The player's facing is derived from this, never stored. */
@@ -187,9 +206,14 @@ export class ArenaScene {
   private readonly projectilePositions = new Float32Array(MAX_PROJECTILES * 3);
   private readonly projectilePoints: Points;
 
-  constructor(canvas: HTMLCanvasElement, { map, pixelSize = 3 }: ArenaSceneOptions) {
+  constructor(
+    canvas: HTMLCanvasElement,
+    { map, pixelSize = 3, waterSize = WATER_TEXTURE_SIZE, waterFps = WATER_FPS }: ArenaSceneOptions,
+  ) {
     this.map = map;
     this.pixelSize = pixelSize;
+    this.waterSize = Math.max(16, Math.floor(waterSize));
+    this.waterFps = Math.max(1, waterFps);
 
     this.renderer = new WebGLRenderer({ canvas, antialias: false, alpha: false });
     // Render below display resolution and let CSS upscale with
@@ -201,11 +225,11 @@ export class ArenaScene {
 
     // --- Water surface -----------------------------------------------------
     this.waterCanvas = document.createElement('canvas');
-    this.waterCanvas.width = WATER_TEXTURE_SIZE;
-    this.waterCanvas.height = WATER_TEXTURE_SIZE;
+    this.waterCanvas.width = this.waterSize;
+    this.waterCanvas.height = this.waterSize;
     const context = this.waterCanvas.getContext('2d');
     if (!context) throw new Error('ArenaScene: 2D context unavailable for the water texture');
-    this.waterImage = context.createImageData(WATER_TEXTURE_SIZE, WATER_TEXTURE_SIZE);
+    this.waterImage = context.createImageData(this.waterSize, this.waterSize);
 
     this.waterTexture = new CanvasTexture(this.waterCanvas);
     this.waterTexture.magFilter = NearestFilter;
@@ -367,8 +391,8 @@ export class ArenaScene {
    */
   spawnRipple(nx: number, ny: number, strength = 0.6): void {
     this.ripples.push({
-      x: nx * WATER_TEXTURE_SIZE,
-      y: ny * WATER_TEXTURE_SIZE,
+      x: nx * this.waterSize,
+      y: ny * this.waterSize,
       bornAt: this.waterClock,
       strength: Math.max(0.1, Math.min(1, strength)),
     });
@@ -469,7 +493,7 @@ export class ArenaScene {
   private updateWater(dt: number): void {
     this.waterClock += dt;
     this.waterAccumulator += dt;
-    if (this.waterAccumulator < 1 / WATER_FPS) return;
+    if (this.waterAccumulator < 1 / this.waterFps) return;
     this.waterAccumulator = 0;
 
     // Drop dead ripples so the array cannot grow without bound.
@@ -487,8 +511,8 @@ export class ArenaScene {
 
   private paintWater(time: number): void {
     renderWater(this.waterImage, {
-      width: WATER_TEXTURE_SIZE,
-      height: WATER_TEXTURE_SIZE,
+      width: this.waterSize,
+      height: this.waterSize,
       time,
       variant: 'surface',
       palette: this.map.palette,

@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import type { GameMap } from '@/types/game';
 import { useAnimationFrame } from '@/hooks/useAnimationFrame';
+import { useInView } from '@/hooks/useInView';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
 import { ArenaScene } from './ArenaScene';
 import { cn } from '@/lib/cn';
@@ -14,6 +15,19 @@ export interface MapPreview3DProps {
 
 /** Radians per second the preview camera drifts around the arena. */
 const ORBIT_SPEED = 0.12;
+
+/**
+ * Water texture edge for a preview, against 192 in a match.
+ *
+ * The water is painted on the CPU and costs this squared per repaint, and that
+ * cost is completely independent of `pixelSize`, which only shrinks the WebGL
+ * buffer. Three previews at the match resolution were repainting 3 x 37k pixels
+ * about twenty times a second — more main-thread work than the match itself,
+ * for three thumbnails a few hundred pixels wide. At 64 that is a ninth.
+ */
+const PREVIEW_WATER_SIZE = 64;
+/** Water repaints per second in a preview. Nobody is reading the wave crests. */
+const PREVIEW_WATER_FPS = 12;
 /** Where the orbit starts, so three previews side by side are not identical. */
 const START_YAW: Record<string, number> = {
   municipalPool: 0,
@@ -40,13 +54,21 @@ export function MapPreview3D({ map, fps = 20, className }: MapPreview3DProps) {
   const sceneRef = useRef<ArenaScene | null>(null);
   const yawRef = useRef(START_YAW[map.id] ?? 0);
   const reducedMotion = useReducedMotion();
+  // On a phone the three map cards stack, so at most one is on screen. Painting
+  // water for the two below the fold is pure waste.
+  const inView = useInView(wrapperRef);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     const wrapper = wrapperRef.current;
     if (!canvas || !wrapper) return;
 
-    const scene = new ArenaScene(canvas, { map, pixelSize: 4 });
+    const scene = new ArenaScene(canvas, {
+      map,
+      pixelSize: 4,
+      waterSize: PREVIEW_WATER_SIZE,
+      waterFps: PREVIEW_WATER_FPS,
+    });
     sceneRef.current = scene;
     yawRef.current = START_YAW[map.id] ?? 0;
     scene.setYaw(yawRef.current);
@@ -81,7 +103,7 @@ export function MapPreview3D({ map, fps = 20, className }: MapPreview3DProps) {
       scene.setYaw(yawRef.current);
       scene.render(delta, []);
     },
-    { fps, paused: reducedMotion },
+    { fps, paused: reducedMotion || !inView },
   );
 
   return (
