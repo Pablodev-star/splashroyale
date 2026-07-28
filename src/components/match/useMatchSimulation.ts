@@ -1,10 +1,25 @@
 import { useRef, useState } from 'react';
 import type { HudState, MinimapEntity } from '@/types/game';
 import { useAnimationFrame } from '@/hooks/useAnimationFrame';
-import type { ArenaFighter } from './ArenaView';
 import type { AnimationId } from '@/game/sprites';
 import { MIN_SPLASH_CHARGE, splashTierFor, type SplashEvent } from '@/game/vfx';
 import { CHARACTERS } from '@/data/characters';
+
+/**
+ * A fighter as the simulation reports it. Owned here now that the 2D
+ * `ArenaView` is gone — the 3D scene converts this into its own `SceneFighter`,
+ * turning the normalised position into world space and the facing into an angle.
+ */
+export interface ArenaFighter {
+  id: string;
+  /** Normalised arena position, 0..1. */
+  x: number;
+  y: number;
+  submerged: boolean;
+  animation?: AnimationId;
+  label?: string;
+  colors: { primary: string; secondary: string };
+}
 
 /**
  * PLACEHOLDER(Block 3): a scripted stand-in for the match engine.
@@ -210,7 +225,6 @@ export function useMatchSimulation({
       id: 'self',
       x: selfX,
       y: selfY,
-      facing: opponentX > selfX ? 'right' : 'left',
       submerged,
       animation: selfAnimation,
       label: playerName,
@@ -220,7 +234,6 @@ export function useMatchSimulation({
       id: 'opponent',
       x: opponentX,
       y: opponentY,
-      facing: selfX > opponentX ? 'right' : 'left',
       submerged: state.opponentSubmerged,
       animation: opponentAnimation,
       label: opponentName,

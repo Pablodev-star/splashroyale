@@ -14,7 +14,13 @@ import type { GameMap, WaterPalette } from '@/types/game';
  * Ripples are simulated here instead, as a height field the surface reads from.
  */
 
-export type WaterVariant = 'background' | 'arena';
+/**
+ * `background` — menu backdrop. `arena` — the old 2D pseudo-3D pool (a trapezoid
+ * faked with perspective). `surface` — a flat top-down sheet meant to be mapped
+ * onto the Three.js water plane (Block 3A), where the perspective comes from the
+ * real camera instead of being drawn in.
+ */
+export type WaterVariant = 'background' | 'arena' | 'surface';
 
 export interface Ripple {
   /** Buffer coordinates. */
@@ -257,7 +263,10 @@ export function renderWater(image: ImageData, options: RenderWaterOptions): void
   const unit = Math.max(0.45, Math.min(2, height / 90));
 
   // Perspective squash: rings read as ellipses on the arena floor plane.
-  const squash = variant === 'arena' ? 0.45 : 0.6;
+  // Ripples are squashed into ellipses to fake a viewing angle — except on the
+  // `surface` texture, where the 3D camera supplies the angle and a ripple must
+  // be a true circle on the plane or it reads as skewed once tilted.
+  const squash = variant === 'arena' ? 0.45 : variant === 'surface' ? 1 : 0.6;
   const prepared = prepareRipples(ripples, time, unit);
   const hasRipples = prepared.length > 0;
 
@@ -354,7 +363,7 @@ export function renderWater(image: ImageData, options: RenderWaterOptions): void
       // Crest / foam lines ride the band boundaries. Only the far bands get pure
       // foam; near the camera a lighter water step reads better than white.
       const bandFraction = bandFloat - Math.floor(bandFloat);
-      if (variant === 'background') {
+      if (variant === 'background' || variant === 'surface') {
         // Menus: a repeating stack of wave lines reads as open water, where a
         // single band boundary would read as a hill silhouette.
         const period = 9 * unit;

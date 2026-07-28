@@ -1,7 +1,14 @@
 import { useEffect, useRef, type RefObject } from 'react';
-import type { WaterCanvasHandle } from '@/components/water/WaterCanvas';
+import type { RippleSpawner } from '@/components/water/useWaterReactions';
 import { SPLASH_TIERS, type SplashTier } from './splashTiers';
-import type { VfxCanvasHandle } from './VfxCanvas';
+
+/**
+ * Anything that can throw a splash. The 2D `VfxCanvas` and the 3D `ArenaScene`
+ * both satisfy it, so in the 3D arena a single object is passed as both targets.
+ */
+export interface SplashTarget {
+  splash: (nx: number, ny: number, tier: SplashTier) => void;
+}
 
 /**
  * A splash that happened. `id` must be unique and stable — it is how the hook
@@ -27,8 +34,8 @@ export interface SplashEvent {
  * tracked in a ref; replaying on every render would spawn a burst per frame.
  */
 export function useSplashEvents(
-  vfx: RefObject<VfxCanvasHandle | null>,
-  water: RefObject<WaterCanvasHandle | null>,
+  vfx: RefObject<SplashTarget | null>,
+  water: RefObject<RippleSpawner | null>,
   events: SplashEvent[],
 ): void {
   const playedRef = useRef(new Set<number>());

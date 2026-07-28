@@ -21,7 +21,7 @@ rarity, pulled from **card packs** ("sobres") bought with **gold** earned in com
 | Styling                                        | **Tailwind CSS v4** (`@theme` tokens in `src/index.css`)                                                                | No CSS-in-JS. No `<form>` tags anywhere.                                                 |
 | Build                                          | **Vite**                                                                                                                | `base: './'` so the static build works under the GitHub Pages sub-path.                  |
 | Rendering (menus, water backgrounds, previews) | **Canvas2D**, low-resolution offscreen buffer upscaled with `image-rendering: pixelated`                                | See `src/components/water/`.                                                             |
-| Rendering (match scene)                        | **Three.js** with billboard sprites — decided in Block 3                                                                | Not yet installed; Block 3 adds the dependency.                                          |
+| Rendering (match scene)                        | **Three.js** with billboard sprites (Block 3A)                                                                          | Camera orbits; the 2D art is reused as textures, not replaced.                            |
 | Online / backend                               | **Supabase** (Realtime channels + presence for matchmaking and rooms, Postgres for accounts, gold, inventory, missions) | GitHub Pages cannot host WebSockets, so the client talks to Supabase directly. Block 6+. |
 | Hosting                                        | **GitHub Pages** (100% static)                                                                                          |                                                                                          |
 
@@ -63,7 +63,8 @@ src/
 
   game/                    Engine-side code. Never imports from screens/.
     sprites/               Pixel rig, keyframed animations, atlas bake, playback
-    vfx/                   Splash tiers, droplet sim, splash canvas + events
+    vfx/                   Splash tiers, droplet sim, splash events
+    scene/                 Three.js arena: billboards, water plane, orbit camera
 
   components/
     ui/                    Design-system primitives. No game knowledge.
@@ -101,7 +102,9 @@ narrow, typed interface.
 | **2A — Character sprites** (done)     | `game/sprites/**`                                      | Character palettes from `data/characters.ts`; exposes a sprite-playback API.            |
 | **2B — Water & reactive environment** (done) | `components/water/**`                           | Map palettes from `data/maps.ts`; actor positions from the arena.                        |
 | **2C — Splash animations** (done)     | `game/vfx/**`                                          | Charge value from Block 3, ripple API from 2B.                                          |
-| **3 — Controls / physics / combat**   | `game/**`                                              | Renders into the `<MatchScreen />` slot and feeds `HudState`.                          |
+| **3A — 3D arena** (done)              | `game/scene/**`                                        | Sprite atlas from 2A, water renderer from 2B, splash tiers from 2C.                     |
+| **3B — Cards as abilities / decks**   | `data/cards.ts`, deck screens                          | Equipped deck feeds the match.                                                          |
+| **3C — Controls / physics / combat**  | `game/**`                                              | Renders into the `<MatchScreen />` slot and feeds `HudState`.                            |
 | **4 — Cards, shop, packs**            | `features/progression/**`                              | `ShopScreen`/`PackPreviewScreen`/`CollectionScreen`, `data/cards.ts`, `data/packs.ts`. |
 | **5 — Card detail & level-up**        | `screens/CardDetailScreen.tsx`                         | The `cardDetail` route and card types from Block 4.                                    |
 
@@ -193,7 +196,36 @@ Droplets fade by *shrinking*, never by alpha — a semi-transparent pixel is
 off-palette and reads as blur in a pixel-art scene. The layer idles when nothing
 is in flight, and droplet count is capped so mashing max-charge cannot run away.
 
-### 4.4 The HUD contract (Block 1 → Block 3)
+### 4.4 The 3D arena contract (Block 3A → Block 3C)
+
+```ts
+<Arena3D map={map} fighters={sceneFighters} ref={arenaRef} />
+// SceneFighter: normalised x/y (0..1), an AnimationId, and either
+// `isSelf` (facing follows the camera) or a world-angle `facing`.
+```
+
+The move to 3D changed the **camera**, not the art: the 2A atlas becomes the
+billboard texture, the 2B pixel water renderer paints the surface texture
+(ripples, wakes and all), and the 2C tier table still sizes splashes. Points
+worth knowing before extending it:
+
+- **Facing is relative, not absolute.** Billboards always face the camera, so
+  which of the four authored orientations to draw depends on where the camera
+  stands. `orientationFor()` derives it; the local player is pinned to the
+  camera's forward direction, which is what keeps their back to you.
+- **Dragging the view turns the fighter.** Camera yaw *is* the player's facing —
+  it is never stored twice.
+- **Arena coordinates need no rebasing.** The water plane spans exactly the
+  arena, so the 0..1 fighter coordinates are also the water's. The 2D stage
+  needed a `WATER_TOP` offset; that class of mismatch is gone.
+- **Sprites are anchored by rig row, not by their bottom edge.** Row 27 sits on
+  the water plane so the rig's own painted foam line stays visible above it —
+  anchor lower and the water plane swallows it, and fighters read as busts cut
+  off at the chest.
+- Splash droplets are world-space points, not the old screen overlay: a 2D
+  overlay cannot line up with a camera that orbits.
+
+### 4.5 The HUD contract (Block 1 → Block 3)
 
 `HudState` in `src/types/game.ts` is the single hand-off point. Block 3 must
 produce this object every frame; the HUD is otherwise pure and stateless:
@@ -208,7 +240,7 @@ interface HudState {
 }
 ```
 
-### 4.5 The navigation contract
+### 4.6 The navigation contract
 
 Screens never import each other. They call `useNavigation()`:
 

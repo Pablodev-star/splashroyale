@@ -1,5 +1,13 @@
 import { useEffect, useRef, type RefObject } from 'react';
-import type { WaterCanvasHandle } from './WaterCanvas';
+
+/**
+ * Anything that can disturb a water surface. There are two implementations now
+ * — the 2D `WaterCanvas` and the 3D `ArenaScene` — so this depends on the
+ * capability rather than on either concrete component.
+ */
+export interface RippleSpawner {
+  spawnRipple: (nx: number, ny: number, strength?: number) => void;
+}
 
 /** Anything moving through the water that should disturb the surface. */
 export interface WaterActor {
@@ -53,7 +61,7 @@ const MAX_WAKE_PER_FRAME = 4;
  * Positions are read from a ref, so this never triggers a re-render of its own.
  */
 export function useWaterReactions(
-  water: RefObject<WaterCanvasHandle | null>,
+  water: RefObject<RippleSpawner | null>,
   actors: WaterActor[],
   { wakeSpacing = 0.045, intensity = 1 }: WaterReactionOptions = {},
 ): void {

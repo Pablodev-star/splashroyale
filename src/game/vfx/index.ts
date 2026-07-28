@@ -5,8 +5,7 @@
  * arena plays them through `useSplashEvents`, which drives both the droplet
  * burst and the 2B surface ripple from one tier spec.
  */
-export { VfxCanvas, type VfxCanvasHandle, type VfxCanvasProps } from './VfxCanvas';
-export { useSplashEvents, type SplashEvent } from './useSplashEvents';
+export { useSplashEvents, type SplashEvent, type SplashTarget } from './useSplashEvents';
 export {
   SPLASH_TIERS,
   TIER_BOUNDARIES,
