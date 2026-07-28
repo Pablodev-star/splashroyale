@@ -22,6 +22,7 @@ import { renderWater, RIPPLE_LIFE, type Ripple } from '@/components/water/render
 import type { GameMap } from '@/types/game';
 import { orientationFor } from './orientation';
 import { createSpriteTexture, type SpriteFrameTexture } from './spriteTexture';
+import { buildScenery, type Scenery } from './scenery';
 
 /**
  * The 3D arena (Block 3A).
@@ -162,6 +163,7 @@ export class ArenaScene {
 
   private readonly map: GameMap;
   private readonly pixelSize: number;
+  private readonly scenery: Scenery;
 
   /** Camera azimuth. The player's facing is derived from this, never stored. */
   private yaw = 0;
@@ -194,7 +196,6 @@ export class ArenaScene {
     // `image-rendering: pixelated`, exactly like the 2D canvases. Antialiasing
     // is off for the same reason: smooth edges would fight the pixel art.
     this.renderer.setPixelRatio(1);
-    this.scene.background = new Color(map.palette.depth[0]);
 
     this.camera = new PerspectiveCamera(55, 1, 0.1, 200);
 
@@ -221,15 +222,14 @@ export class ArenaScene {
     water.rotation.x = -Math.PI / 2;
     this.scene.add(water);
 
-    // --- Deck ---------------------------------------------------------------
-    const deck = new Mesh(
-      new PlaneGeometry(ARENA_SIZE * 3, ARENA_SIZE * 3),
-      new MeshBasicMaterial({ color: new Color(map.palette.surround) }),
-    );
-    deck.rotation.x = -Math.PI / 2;
-    // Just below the water so the pool reads as inset rather than z-fighting.
-    deck.position.y = -0.06;
-    this.scene.add(deck);
+    // --- Surroundings -------------------------------------------------------
+    // The map's own place: deck and lane ropes, or a shore with parasols, or a
+    // reef with palms and a jetty. Replaces the single flat coloured square that
+    // made every map the same scene in a different colour, and gives the water
+    // an edge instead of letting it stop in mid-air (see `scenery.ts`).
+    this.scenery = buildScenery(map);
+    this.scene.add(this.scenery.root);
+    this.scene.background = this.scenery.sky;
 
     // --- Splash droplets -----------------------------------------------------
     this.dropletGeometry.setAttribute(
@@ -550,6 +550,8 @@ export class ArenaScene {
   }
 
   dispose(): void {
+    this.scene.remove(this.scenery.root);
+    this.scenery.dispose();
     for (const node of this.fighters.values()) {
       this.scene.remove(node.mesh);
       node.mesh.geometry.dispose();

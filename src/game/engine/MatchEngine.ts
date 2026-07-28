@@ -103,9 +103,13 @@ export class MatchEngine {
 
   constructor(options: MatchEngineOptions) {
     this.options = options;
+    // The player starts on the near side and the opponent on the far side.
+    // Reversed, the opponent spawned *behind* the camera — which sits seven
+    // units back along the player's facing — so every round opened with the
+    // fight off-screen until you turned around.
     this.fighters = {
-      self: this.makeFighter(options.self, 0.5, 0.78),
-      opponent: this.makeFighter(options.opponent, 0.5, 0.24),
+      self: this.makeFighter(options.self, 0.5, 0.22),
+      opponent: this.makeFighter(options.opponent, 0.5, 0.76),
     };
     this.faceEachOther();
   }
@@ -151,8 +155,8 @@ export class MatchEngine {
    */
   private startRound(): void {
     for (const [nx, nz, id] of [
-      [0.5, 0.78, 'self'],
-      [0.5, 0.24, 'opponent'],
+      [0.5, 0.22, 'self'],
+      [0.5, 0.76, 'opponent'],
     ] as const) {
       const fighter = this.fighters[id];
       fighter.x = nx * ARENA;

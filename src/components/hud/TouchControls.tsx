@@ -63,8 +63,13 @@ export function TouchControls({
 
   return (
     <div
+      // `select-none` on the whole layer, not just the pads: holding an attack
+      // pad on a phone otherwise starts a text selection and pops the copy/paste
+      // bubble over the controls mid-fight. `touch-callout` kills the iOS
+      // long-press menu, which `user-select` alone does not.
       className={cn(
         'pointer-events-none absolute inset-x-0 bottom-0 flex items-end justify-between gap-4 p-3',
+        'touch-none select-none [-webkit-touch-callout:none]',
         mirrored && 'flex-row-reverse',
         className,
       )}
@@ -168,14 +173,15 @@ function ActionPad({
       onClick={onPress}
       className={cn(
         'pixel-border-thin flex h-14 min-w-0 touch-none flex-col items-center justify-center',
+        'select-none [-webkit-touch-callout:none] [-webkit-tap-highlight-color:transparent]',
         'transition-transform duration-[90ms] ease-[steps(2,jump-none)] active:translate-y-[2px]',
         PAD_TONE[tone],
         cooling && 'opacity-45 saturate-50',
         className,
       )}
     >
-      <span className="text-base leading-none font-bold">{glyph}</span>
-      <span className="max-w-full truncate px-1 text-[8px] tracking-[0.14em] uppercase">
+      <span className="pointer-events-none text-base leading-none font-bold">{glyph}</span>
+      <span className="pointer-events-none max-w-full truncate px-1 text-[8px] tracking-[0.14em] uppercase">
         {label}
       </span>
     </button>

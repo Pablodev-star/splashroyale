@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { GameMode, MapId } from '@/types/game';
 import { MAPS } from '@/data/maps';
-import { WaterCanvas } from '@/components/water/WaterCanvas';
+import { MapPreview3D } from '@/game/scene';
 import { ScreenFrame } from '@/components/ui/ScreenFrame';
 import { PixelButton } from '@/components/ui/PixelButton';
 import { PixelBadge } from '@/components/ui/PixelBadge';
@@ -74,15 +74,11 @@ export function MapSelectScreen({ mode, roomCode }: MapSelectScreenProps) {
                   active ? 'pixel-border-active' : 'pixel-border',
                 )}
               >
-                {/* Animated preview: the real renderer at preview resolution. */}
+                {/* The preview *is* the map: the same 3D scene the match runs,
+                    on a slow orbit. A flat water swatch made three different
+                    places look like three shades of the same rectangle. */}
                 <span className="relative block aspect-video w-full overflow-hidden">
-                  <WaterCanvas
-                    map={map}
-                    variant="arena"
-                    pixelSize={4}
-                    fps={20}
-                    className="absolute inset-0"
-                  />
+                  <MapPreview3D map={map} className="absolute inset-0" />
                   {active && (
                     <span
                       aria-hidden

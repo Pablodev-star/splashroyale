@@ -1,6 +1,7 @@
 import type { CSSProperties } from 'react';
 import type { Pack, PackTier } from '@/types/game';
 import { RARITY_LABEL } from '@/data/cards';
+import { HoloSheen } from '@/components/ui/HoloSheen';
 import { cn } from '@/lib/cn';
 
 export interface Pack3DProps {
@@ -24,6 +25,18 @@ const SIZES: Record<'hero' | 'tile', Dimensions> = {
   hero: { width: 264, height: 370, depth: 30 },
   tile: { width: 104, height: 146, depth: 14 },
 };
+
+/**
+ * Black outline width, shared by every face of the box.
+ *
+ * One function because the six faces have to agree: the front and back used to
+ * derive theirs from a `px(3)` helper while the four sides used a separate
+ * `2 * scale`, so at hero size the box was outlined 3px on the faces you look
+ * at and 2px on the edges between them — a visible step wherever two faces met.
+ */
+function outlineWidth(dim: Dimensions): number {
+  return Math.max(1, Math.round(3 * (dim.width / SIZES.hero.width)));
+}
 
 /** How much spectacle each tier gets. */
 const TIER_FX: Record<
@@ -54,8 +67,7 @@ export function Pack3D({
   const dim = SIZES[size];
   const fx = TIER_FX[pack.tier];
   const half = dim.depth / 2;
-  /** Black outline width, scaled down with the pack so tiles keep a 1px stroke. */
-  const edge = Math.max(1, Math.round(2 * (dim.width / SIZES.hero.width)));
+  const edge = outlineWidth(dim);
 
   return (
     <div
@@ -146,7 +158,7 @@ function PackFaceFront({ pack, dim }: { pack: Pack; dim: Dimensions }) {
       className="relative flex h-full w-full flex-col overflow-hidden"
       style={{
         background: pack.art.base,
-        boxShadow: `0 0 0 ${px(3)}px var(--color-abyss), inset ${px(3)}px ${px(3)}px 0 rgb(255 255 255 / 0.22), inset -${px(3)}px -${px(3)}px 0 rgb(0 0 0 / 0.3)`,
+        boxShadow: `0 0 0 ${outlineWidth(dim)}px var(--color-abyss), inset ${px(3)}px ${px(3)}px 0 rgb(255 255 255 / 0.22), inset -${px(3)}px -${px(3)}px 0 rgb(0 0 0 / 0.3)`,
       }}
     >
       <TearStrip color={pack.art.shade} scale={scale} />
@@ -216,13 +228,10 @@ function PackFaceFront({ pack, dim }: { pack: Pack; dim: Dimensions }) {
       </div>
 
       {/* Foil sheen sweeping across the wrapper. */}
-      <span
-        aria-hidden
-        className={cn(
-          'animate-holo pointer-events-none absolute inset-0 z-20',
-          pack.tier === 'mythic' ? 'holo-sheen-rainbow' : 'holo-sheen',
-        )}
-        style={{ opacity: pack.tier === 'standard' ? 0.28 : 0.6 }}
+      <HoloSheen
+        rainbow={pack.tier === 'mythic'}
+        opacity={pack.tier === 'standard' ? 0.28 : 0.6}
+        className="z-20"
       />
     </div>
   );
@@ -237,7 +246,7 @@ function PackFaceBack({ pack, dim }: { pack: Pack; dim: Dimensions }) {
       className="relative flex h-full w-full flex-col items-center justify-center overflow-hidden"
       style={{
         background: pack.art.shade,
-        boxShadow: `0 0 0 ${px(3)}px var(--color-abyss), inset ${px(3)}px ${px(3)}px 0 rgb(255 255 255 / 0.12), inset -${px(3)}px -${px(3)}px 0 rgb(0 0 0 / 0.35)`,
+        boxShadow: `0 0 0 ${outlineWidth(dim)}px var(--color-abyss), inset ${px(3)}px ${px(3)}px 0 rgb(255 255 255 / 0.12), inset -${px(3)}px -${px(3)}px 0 rgb(0 0 0 / 0.35)`,
       }}
     >
       {/* Repeating emblem lattice. */}
@@ -281,10 +290,7 @@ function PackFaceBack({ pack, dim }: { pack: Pack; dim: Dimensions }) {
         </div>
       </div>
 
-      <span
-        aria-hidden
-        className="animate-holo holo-sheen pointer-events-none absolute inset-0 z-20 opacity-30"
-      />
+      <HoloSheen opacity={0.3} className="z-20" />
     </div>
   );
 }
