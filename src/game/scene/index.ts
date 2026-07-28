@@ -8,3 +8,4 @@
 export { Arena3D, type Arena3DHandle, type Arena3DProps } from './Arena3D';
 export { ArenaScene, ARENA_SIZE, type SceneFighter, type ArenaSceneOptions } from './ArenaScene';
 export { orientationFor, wrapAngle } from './orientation';
+export { MapPreview3D, type MapPreview3DProps } from './MapPreview3D';

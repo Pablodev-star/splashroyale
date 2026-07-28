@@ -34,6 +34,9 @@ export function UltimateIndicator({
       aria-label={`Ultimate: ${name}${ready ? ' (ready)' : ` (${Math.round(clamped * 100)}%)`}`}
       className={cn(
         'group relative flex flex-col items-center justify-end overflow-hidden',
+        // Same reason as the touch pads: this is held, and a held button that
+        // selects its own label pops the copy bubble over the fight.
+        'touch-none select-none [-webkit-touch-callout:none] [-webkit-tap-highlight-color:transparent]',
         'bg-abyss transition-transform duration-[90ms] ease-[steps(2,jump-none)]',
         ready
           ? 'pixel-border-gold hover:-translate-y-[2px] active:translate-y-[2px]'

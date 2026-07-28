@@ -108,7 +108,8 @@ narrow, typed interface.
 | **3B — Cards as abilities / decks** (done) | `data/cards.ts`, `data/decks.ts`, `state/DeckContext.tsx`, deck screens | The equipped deck feeds the match HUD and, from 3C, the engine.        |
 | **3C — Controls / physics / combat** (done) | `game/engine/**`                                  | Deck from 3B, scene from 3A, splash tiers from 2C; produces `HudState`.                |
 | **4 — Progression, packs, economy** (done) | `game/progression/**`, `state/PlayerContext.tsx` | Card catalogue from 3B; feeds card levels into 3C combat.                              |
-| **5 — Online play**                   | `state/**`, Supabase                                   | Real opponents, accounts, and progression synced off-device.                            |
+| **5 — Maps & polish** (done)          | `game/scene/scenery.ts`, `MapPreview3D`                | Map data from Block 1; renders inside the 3A arena.                                     |
+| **6 — Online play**                   | `state/**`, Supabase                                   | Real opponents, accounts, and progression synced off-device.                            |
 
 ### 4.1 The sprite contract (Block 2A → Block 3)
 
@@ -226,6 +227,21 @@ worth knowing before extending it:
   off at the chest.
 - Splash droplets are world-space points, not the old screen overlay: a 2D
   overlay cannot line up with a camera that orbits.
+- **Every map is a place, not a palette.** `scenery.ts` builds the surround
+  once per map: a tiled deck with lane ropes and starting blocks, an open shore
+  with parasols, or a reef lagoon with palms and a jetty. All flat-shaded boxes
+  and planes, static, a few dozen draw calls. The map picker renders the same
+  scene (`MapPreview3D`) rather than a 2D water swatch, so the thumbnail is the
+  map.
+- **The ground reaches past the far clip, so the water never ends in mid-air.**
+  The arena edge is a visible border — coping, wet sand, a coral shelf — and
+  beyond it the deck or the open sea continues to the horizon. The sky is a
+  gradient with no painted horizon band: `scene.background` is screen-space and
+  the world horizon is not, so a band drawn into it floats above the shoreline
+  instead of sitting on it.
+- **Spawns face the camera.** The camera sits seven units behind the player
+  along their facing, so an opponent spawned at -z starts *behind* the lens.
+  Both fighters spawn on the +z side of their own half.
 - **Fighters within `CAMERA_CULL_DISTANCE` of the lens are not drawn.** The
   camera sits seven units behind the player, so an opponent circling their back
   walks through it; measured against the real engine, the bot gets within 0.18m

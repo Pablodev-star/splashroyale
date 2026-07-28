@@ -51,7 +51,6 @@
   --animate-ray-spin: ray-spin 12s linear infinite;
   --animate-ray-spin-fast: ray-spin 7s linear reverse infinite;
   --animate-orbit: orbit 6s linear infinite;
-  --animate-holo: holo 2.8s linear infinite;
   --animate-rainbow-frame: rainbow-frame 4s linear infinite;
   --animate-rainbow-text: rainbow-text 4s linear infinite;
   --animate-aura: aura 2.2s ease-in-out infinite;
@@ -112,15 +111,26 @@
   }
 }
 
-/* Holographic band sweeping diagonally across a card face.
-   Loop is seamless: starts with sheen off-left, travels fully across, ends with
-   sheen off-right. When it loops, the wrap-around is smooth. */
-@keyframes holo {
-  0% {
-    background-position: -200% 0;
+/* Holographic band sweeping across a card or pack face.
+   
+   Seamless by construction, not by tuning: the track holds two identical bands
+   exactly one container-width apart and shifts by exactly that distance per
+   cycle, so the final frame is pixel-identical to the first and one band is
+   always crossing while the next is already on its way in.
+
+   The previous version animated `background-position` from -200% to 200% over a
+   220% background. Measured, that moved the band from x=91px to x=481px on a
+   260px face: it appeared out of nowhere in the *middle* of the card, exited
+   right, and snapped back to the middle — covering only the right two thirds
+   and visibly cutting on every loop. Percentage background-position resolves
+   against (container - image), which is what made the intent and the result
+   disagree. */
+@keyframes holo-run {
+  from {
+    transform: translateX(0);
   }
-  100% {
-    background-position: 200% 0;
+  to {
+    transform: translateX(-50%);
   }
 }
 
@@ -603,29 +613,56 @@
 }
 
 /* Diagonal holographic sheen. Overlay only — never used as a surface fill. */
-@utility holo-sheen {
-  background-image: linear-gradient(
-    100deg,
-    transparent 38%,
-    rgb(255 255 255 / 0.5) 50%,
-    transparent 62%
-  );
-  background-size: 220% 100%;
+/* Clips the moving track to the face it sweeps. */
+@utility holo-track {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
 }
 
-/* Legendary rainbow sheen, stronger and multi-hued with full spectrum. */
-@utility holo-sheen-rainbow {
+/* Twice the face wide, holding two bands one face-width apart. */
+@utility holo-run {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 200%;
+  animation: holo-run 2.2s linear infinite;
+}
+
+/* Taller than the face and skewed, so the diagonal covers the corners. */
+@utility holo-band {
+  position: absolute;
+  top: -20%;
+  height: 140%;
+  width: 26%;
+  transform: skewX(-14deg);
   background-image: linear-gradient(
-    98deg,
-    transparent 25%,
-    rgb(255 100 200 / 0.48) 36%,
-    rgb(255 150 100 / 0.50) 41%,
-    rgb(120 220 255 / 0.56) 50%,
-    rgb(150 255 100 / 0.52) 59%,
-    rgb(100 200 255 / 0.48) 64%,
-    transparent 75%
+    90deg,
+    transparent 0%,
+    rgb(255 255 255 / 0.55) 50%,
+    transparent 100%
   );
-  background-size: 220% 100%;
+}
+
+/* Legendary: the same band, multi-hued and wider. */
+@utility holo-band-rainbow {
+  position: absolute;
+  top: -20%;
+  height: 140%;
+  width: 38%;
+  transform: skewX(-14deg);
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgb(255 100 200 / 0.42) 18%,
+    rgb(255 150 100 / 0.50) 32%,
+    rgb(120 220 255 / 0.60) 50%,
+    rgb(150 255 100 / 0.52) 68%,
+    rgb(100 200 255 / 0.42) 82%,
+    transparent 100%
+  );
 }
 
 /* Reduced motion: kill loops and transitions, keep everything readable. */

@@ -1,6 +1,7 @@
 import type { CSSProperties, ReactNode } from 'react';
 import type { AbilityCard, Rarity } from '@/types/game';
 import { RARITY_LABEL, SLOT_GLYPH, SLOT_LABEL, abilityAtLevel } from '@/data/cards';
+import { HoloSheen } from '@/components/ui/HoloSheen';
 import { cn } from '@/lib/cn';
 
 export type CardSize = 'sm' | 'md' | 'lg';
@@ -209,13 +210,10 @@ export function GameCard({
 
           {/* Holo sweep: rainbow for legendary, plain for rare/epic, none common. */}
           {!locked && rarity !== 'common' && (
-            <span
-              aria-hidden
-              className={cn(
-                'animate-holo pointer-events-none absolute inset-0 z-20',
-                isLegendary ? 'holo-sheen-rainbow' : 'holo-sheen',
-              )}
-              style={{ opacity: isLegendary ? 0.75 : rarity === 'epic' ? 0.45 : 0.3 }}
+            <HoloSheen
+              rainbow={isLegendary}
+              opacity={isLegendary ? 0.75 : rarity === 'epic' ? 0.45 : 0.3}
+              className="z-20"
             />
           )}
         </div>
