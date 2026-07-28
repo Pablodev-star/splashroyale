@@ -536,3 +536,6 @@ export function validateCards(): void {
 }
 
 if (import.meta.env.DEV) validateCards();
+
+/** Ids the art module checks against, so a new card cannot ship undrawn. */
+export const CARD_IDS: string[] = CARD_CATALOG.map((card) => card.id);

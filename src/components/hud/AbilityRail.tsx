@@ -1,7 +1,8 @@
 import type { AbilityCard, AbilitySlot, Rarity } from '@/types/game';
-import { SLOT_GLYPH, SLOT_LABEL, SLOT_ORDER } from '@/data/cards';
+import { SLOT_LABEL, SLOT_ORDER } from '@/data/cards';
 import { SLOT_CAP } from '@/game/input/keybinds';
 import { KeyCap } from '@/components/ui/KeyCap';
+import { CardArt } from '@/components/cards/CardArt';
 import { cn } from '@/lib/cn';
 
 export interface AbilityRailProps {
@@ -66,13 +67,16 @@ export function AbilityRail({
                 {SLOT_CAP[slot]}
               </KeyCap>
             ) : (
+              // The card's own picture, not the slot's glyph: on touch this row
+              // is the only place the equipped ability is named, and three
+              // identical `≈` told you nothing about which one you had.
               <span
                 className={cn(
-                  'relative w-3 text-center text-[11px] leading-none',
+                  'relative block h-3.5 w-3.5 shrink-0',
                   cooling ? 'text-mist/30' : 'text-surf',
                 )}
               >
-                {SLOT_GLYPH[slot]}
+                <CardArt card={card} />
               </span>
             )}
             <span className="relative min-w-0">

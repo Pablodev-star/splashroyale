@@ -1,6 +1,7 @@
 import type { CSSProperties, ReactNode } from 'react';
 import type { AbilityCard, Rarity } from '@/types/game';
-import { RARITY_LABEL, SLOT_GLYPH, SLOT_LABEL, abilityAtLevel } from '@/data/cards';
+import { RARITY_LABEL, SLOT_LABEL, abilityAtLevel } from '@/data/cards';
+import { CardArt } from './CardArt';
 import { HoloSheen } from '@/components/ui/HoloSheen';
 import { cn } from '@/lib/cn';
 
@@ -52,10 +53,15 @@ const WELL: Record<Rarity, string> = {
   legendary: 'bg-[#3a2606]',
 };
 
-const METRICS: Record<CardSize, { name: string; glyph: string; body: string; pad: string }> = {
-  sm: { name: 'text-[9px]', glyph: 'text-4xl', body: 'text-[8px]', pad: 'p-1.5' },
-  md: { name: 'text-[11px]', glyph: 'text-6xl', body: 'text-[9px]', pad: 'p-2' },
-  lg: { name: 'text-base', glyph: 'text-8xl', body: 'text-[12px]', pad: 'p-3' },
+const METRICS: Record<
+  CardSize,
+  { name: string; glyph: string; art: string; body: string; pad: string }
+> = {
+  // `glyph` is now only the locked card's question mark; `art` sizes the
+  // drawing, which is square and so needs a box rather than a font size.
+  sm: { name: 'text-[9px]', glyph: 'text-4xl', art: 'block h-11 w-11', body: 'text-[8px]', pad: 'p-1.5' },
+  md: { name: 'text-[11px]', glyph: 'text-6xl', art: 'block h-16 w-16', body: 'text-[9px]', pad: 'p-2' },
+  lg: { name: 'text-base', glyph: 'text-8xl', art: 'block h-28 w-28', body: 'text-[12px]', pad: 'p-3' },
 };
 
 /**
@@ -164,16 +170,23 @@ export function GameCard({
               />
             ))}
 
-          <span
-            className={cn(
-              'relative z-10 leading-none',
-              metrics.glyph,
-              locked ? 'text-ocean' : TEXT[rarity],
-              isLegendary && 'animate-rainbow-text animate-bob',
-            )}
-          >
-            {locked ? '?' : SLOT_GLYPH[card.slot]}
-          </span>
+          {/* The card's own picture. A locked card keeps the question mark —
+              the silhouette is the point, and showing the art would give away
+              what you have not pulled yet. */}
+          {locked ? (
+            <span className={cn('text-ocean relative z-10 leading-none', metrics.glyph)}>?</span>
+          ) : (
+            <span
+              className={cn(
+                'relative z-10',
+                metrics.art,
+                TEXT[rarity],
+                isLegendary && 'animate-rainbow-text animate-bob',
+              )}
+            >
+              <CardArt card={card} />
+            </span>
+          )}
 
           {/* Top-left of the art well is the only corner nothing else claims —
               the banner owns the top strip and the level chip its right end. */}
