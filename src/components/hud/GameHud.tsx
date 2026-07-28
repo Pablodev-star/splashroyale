@@ -1,15 +1,22 @@
-import type { HudState } from '@/types/game';
+import type { AbilityCard, AbilitySlot, HudState } from '@/types/game';
 import { Nameplate } from './Nameplate';
 import { ChargeMeter } from './ChargeMeter';
 import { UltimateIndicator } from './UltimateIndicator';
 import { Minimap } from './Minimap';
 import { MatchTimer } from './MatchTimer';
+import { AbilityRail } from './AbilityRail';
 import { PixelIconButton } from '@/components/ui/PixelIconButton';
 import { cn } from '@/lib/cn';
 
 export interface GameHudProps {
   state: HudState;
   ultimateName: string;
+  /** The equipped deck (Block 3B), shown beside the minimap on desktop. */
+  abilities?: Partial<Record<AbilitySlot, AbilityCard>>;
+  /** Seconds left per ability, from the engine (Block 3C). */
+  cooldowns?: Partial<Record<AbilitySlot, number>>;
+  /** Rounds won so far, shown under the clock. */
+  score?: { self: number; opponent: number };
   showMinimap?: boolean;
   /** Arena width / depth, forwarded to the minimap. */
   arenaAspect?: number;
@@ -25,6 +32,9 @@ export interface GameHudProps {
 export function GameHud({
   state,
   ultimateName,
+  abilities,
+  cooldowns,
+  score,
   showMinimap = true,
   arenaAspect,
   onPause,
@@ -38,6 +48,13 @@ export function GameHud({
         <Nameplate fighter={state.self} align="left" />
         <div className="flex flex-col items-center gap-2">
           <MatchTimer remainingMs={state.timeRemainingMs} round={state.round} />
+          {score && (
+            <div className="bg-abyss/75 flex items-center gap-2 px-2 py-0.5 text-[11px] tabular-nums">
+              <span className="text-surf">{score.self}</span>
+              <span className="text-mist/40 text-[9px]">—</span>
+              <span className="text-danger">{score.opponent}</span>
+            </div>
+          )}
           {onPause && (
             <div className="pointer-events-auto">
               <PixelIconButton ariaLabel="Pause match" onClick={onPause}>
@@ -49,12 +66,12 @@ export function GameHud({
         <Nameplate fighter={state.opponent} align="right" />
       </div>
 
-      {/* Bottom-left: minimap. Hidden on phones, where the stick lives there. */}
-      {showMinimap && (
-        <div className="absolute bottom-3 left-3 hidden md:block">
-          <Minimap entities={state.entities} aspect={arenaAspect} />
-        </div>
-      )}
+      {/* Bottom-left: minimap and the equipped deck. Hidden on phones, where the
+          stick lives there and the touch pads already name the abilities. */}
+      <div className="absolute bottom-3 left-3 hidden flex-col gap-2 md:flex">
+        {abilities && <AbilityRail cards={abilities} cooldowns={cooldowns} />}
+        {showMinimap && <Minimap entities={state.entities} aspect={arenaAspect} />}
+      </div>
 
       {/* Bottom-centre: charge meter. Sits above the touch pads on phones. */}
       <div className="absolute bottom-[184px] left-1/2 w-[78vw] -translate-x-1/2 md:bottom-3 md:w-[min(420px,60vw)]">

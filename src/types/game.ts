@@ -13,6 +13,7 @@ export type ScreenId =
   | 'mainMenu'
   | 'modeSelect'
   | 'mapSelect'
+  | 'deckSelect'
   | 'matchmaking'
   | 'roomLobby'
   | 'match'
@@ -27,11 +28,22 @@ export type GameMode = 'localBots' | 'online' | 'privateRoom';
 
 export type TransitionKind = 'fade' | 'slideForward' | 'slideBack' | 'scale';
 
+/**
+ * Where the deck screen goes once a deck is confirmed. `null` means it was
+ * opened from the menu to edit decks, so there is no match waiting.
+ */
+export interface MatchTarget {
+  mode: GameMode;
+  mapId: MapId;
+  roomCode?: string;
+}
+
 /** Params accepted by each screen. Add an entry when adding a screen. */
 export interface RouteParams {
   mainMenu: undefined;
   modeSelect: undefined;
   mapSelect: { mode: GameMode; roomCode?: string };
+  deckSelect: { next: MatchTarget | null };
   matchmaking: { mapId: MapId };
   roomLobby: { roomCode: string; isHost: boolean };
   match: { mode: GameMode; mapId: MapId; roomCode?: string };
@@ -123,20 +135,31 @@ export interface Character {
 }
 
 /* -------------------------------------------------------------------------- */
-/* Cards (placeholder shape — Block 4 owns the real economy)                   */
+/* Cards as abilities, and the decks built from them (Block 3B)                */
 /* -------------------------------------------------------------------------- */
 
 export type Rarity = 'common' | 'rare' | 'epic' | 'legendary';
 
-export type CardKind = 'attack' | 'defense' | 'utility' | 'ultimate';
+/**
+ * The three things a fighter can do, and therefore the three slots a deck has.
+ *
+ * A card **is** an ability, not a modifier: equipping `undertowKick` in
+ * `attack2` means pressing the second attack performs that kick. Every rarity
+ * has cards for every slot, so rarity buys spectacle and power, never access —
+ * a deck may mix rarities freely or be all one rarity.
+ */
+export type AbilitySlot = 'attack1' | 'attack2' | 'ultimate';
 
 export interface AbilityCard {
   id: string;
   name: string;
-  kind: CardKind;
+  /** The only slot this card can be equipped in. */
+  slot: AbilitySlot;
   rarity: Rarity;
   /** Effect copy shown on the card face. */
   description: string;
+  /** How it feels to use. Shown on the detail screen, never on the card face. */
+  flavour: string;
   level: number;
   maxLevel: number;
   /** Copies owned toward the next level. */
@@ -144,6 +167,19 @@ export interface AbilityCard {
   copiesForNextLevel: number;
   /** True once the player has pulled it from a pack. */
   owned: boolean;
+  /** Combat numbers. Block 3C reads these; the UI shows them on the card. */
+  ability: {
+    /** Damage of one full-power use, as a share of a fighter's health bar. */
+    damage: number;
+    /** Seconds before the ability can be used again. */
+    cooldownS: number;
+    /** Reach in arena units (the arena is 16 across). */
+    range: number;
+    /** Seconds to reach full charge. 0 for abilities that fire instantly. */
+    chargeS: number;
+    /** Short effect tags, shown as chips: 'Knockback', 'Piercing', … */
+    tags: string[];
+  };
   /** The one number that grows with level, shown on the detail screen. */
   stat: {
     label: string;
@@ -152,7 +188,23 @@ export interface AbilityCard {
     /** Added per level above 1. */
     perLevel: number;
     unit: string;
+    /**
+     * Which `ability` field this stat *is*, when it is one of them.
+     *
+     * Without this the level curve and the combat numbers are two independent
+     * copies of the same value, and they drift: a level-3 Water Jet would show
+     * "Jet damage 18" on its detail page while its card face and every deck
+     * total still said 14. `abilityAtLevel()` is the only reader.
+     */
+    drives?: 'damage' | 'range' | 'cooldownS' | 'chargeS';
   };
+}
+
+/** Three cards, one per slot. Saved so a deck is picked once, not every match. */
+export interface Deck {
+  id: string;
+  name: string;
+  cards: Record<AbilitySlot, string>;
 }
 
 /* -------------------------------------------------------------------------- */

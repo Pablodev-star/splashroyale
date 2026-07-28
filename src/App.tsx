@@ -1,6 +1,7 @@
 import { NavigationProvider } from '@/state/NavigationContext';
 import { SettingsProvider, useSettings } from '@/state/SettingsContext';
 import { PlayerProvider } from '@/state/PlayerContext';
+import { DeckProvider } from '@/state/DeckContext';
 import { ScreenRouter } from '@/app/ScreenRouter';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { cn } from '@/lib/cn';
@@ -10,9 +11,11 @@ export function App() {
     <ErrorBoundary>
       <SettingsProvider>
         <PlayerProvider>
-          <NavigationProvider>
-            <Stage />
-          </NavigationProvider>
+          <DeckProvider>
+            <NavigationProvider>
+              <Stage />
+            </NavigationProvider>
+          </DeckProvider>
         </PlayerProvider>
       </SettingsProvider>
     </ErrorBoundary>

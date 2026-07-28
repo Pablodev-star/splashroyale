@@ -95,6 +95,20 @@ const CAMERA_DISTANCE = 7;
 const CAMERA_HEIGHT = 3.2;
 const CAMERA_LOOK_HEIGHT = 0.9;
 
+/**
+ * Other fighters closer to the camera than this are not drawn.
+ *
+ * The camera sits seven units behind the player, so an opponent circling around
+ * the player's back walks straight through it. Before Block 3C gave the bot real
+ * movement nothing ever went there; now it does, and a billboard a metre from
+ * the lens fills the screen with a smear of magnified pixels that hides the
+ * whole fight. Culling is the right tool rather than fading: a semi-transparent
+ * sprite is off-palette (STYLEGUIDE §3), and by the time a fighter is this close
+ * they are an unreadable wall anyway. The minimap and their nameplate still
+ * track them, so nothing is actually lost.
+ */
+const CAMERA_CULL_DISTANCE = 2.4;
+
 /** A projectile in flight, in the same normalised arena space as fighters. */
 export interface SceneProjectile {
   id: string;
@@ -510,10 +524,14 @@ export class ArenaScene {
       node.frame = index;
 
       // --- Orientation relative to the camera --------------------------------
-      const toFighter = Math.atan2(
-        node.mesh.position.z - this.camera.position.z,
-        node.mesh.position.x - this.camera.position.x,
-      );
+      const dxCamera = node.mesh.position.x - this.camera.position.x;
+      const dzCamera = node.mesh.position.z - this.camera.position.z;
+      // The local player is pinned at the camera's own distance, so this only
+      // ever culls someone who has walked between you and the lens.
+      node.mesh.visible =
+        fighter.isSelf || Math.hypot(dxCamera, dzCamera) > CAMERA_CULL_DISTANCE;
+
+      const toFighter = Math.atan2(dzCamera, dxCamera);
       // The local player is pinned to the camera's forward direction, so they
       // are always seen from behind — no need to derive it.
       const facing = fighter.isSelf

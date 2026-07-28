@@ -40,18 +40,18 @@ export function MapSelectScreen({ mode, roomCode }: MapSelectScreenProps) {
             <PixelButton variant="ghost" size="md" onClick={back}>
               Back
             </PixelButton>
+            {/* Deck first, match second. The deck screen owns the actual launch
+                so the loadout is always confirmed against the map it plays on. */}
             <PixelButton
               variant="primary"
               size="lg"
               icon="▶"
               emphasis
               onClick={() =>
-                mode === 'online'
-                  ? navigate('matchmaking', { mapId: selected })
-                  : navigate('match', { mode, mapId: selected, roomCode })
+                navigate('deckSelect', { next: { mode, mapId: selected, roomCode } })
               }
             >
-              {mode === 'online' ? 'Queue Up' : 'Start Match'}
+              Choose Deck
             </PixelButton>
           </>
         }

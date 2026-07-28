@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { CARD_BY_ID, CARD_KIND_LABEL, RARITY_LABEL } from '@/data/cards';
+import { CARD_BY_ID, RARITY_LABEL, SLOT_LABEL, abilityAtLevel, statAtLevel } from '@/data/cards';
+import { canEquip } from '@/data/decks';
 import type { AbilityCard, Rarity } from '@/types/game';
 import { GameCard } from '@/components/cards/GameCard';
 import { WaterCanvas } from '@/components/water/WaterCanvas';
@@ -9,6 +10,7 @@ import { PixelButton } from '@/components/ui/PixelButton';
 import { PixelBadge } from '@/components/ui/PixelBadge';
 import { PixelBar } from '@/components/ui/PixelBar';
 import { useNavigation } from '@/state/NavigationContext';
+import { useDecks } from '@/state/DeckContext';
 import { formatNumber } from '@/lib/format';
 import { cn } from '@/lib/cn';
 
@@ -38,10 +40,18 @@ const UPGRADE_BASE: Record<Rarity, number> = {
   legendary: 3000,
 };
 
-function statAtLevel(card: AbilityCard, level: number): string {
-  const raw = card.stat.base + card.stat.perLevel * (level - 1);
-  const rounded = Number.isInteger(raw) ? raw : Number(raw.toFixed(1));
-  return `${rounded}${card.stat.unit}`;
+function AbilityStat({ label, value, tone }: { label: string; value: string; tone?: string }) {
+  return (
+    <div className="bg-abyss/60 pixel-border-thin px-2 py-1.5">
+      <div className="text-mist/45 text-[8px] tracking-[0.16em] uppercase">{label}</div>
+      <div className={cn('text-sm tabular-nums', tone ?? 'text-mist')}>{value}</div>
+    </div>
+  );
+}
+
+/** The stat as printed: the shared level curve plus this card's unit. */
+function statText(card: AbilityCard, level: number): string {
+  return `${statAtLevel(card, level)}${card.stat.unit}`;
 }
 
 /**
@@ -52,7 +62,8 @@ function statAtLevel(card: AbilityCard, level: number): string {
  * and the level-up animation belong to the progression block.
  */
 export function CardDetailScreen({ cardId }: CardDetailScreenProps) {
-  const { back } = useNavigation();
+  const { back, navigate } = useNavigation();
+  const { activeDeck, equip } = useDecks();
   const card = CARD_BY_ID[cardId];
   const [upgrading, setUpgrading] = useState(false);
 
@@ -71,6 +82,9 @@ export function CardDetailScreen({ cardId }: CardDetailScreenProps) {
   const ready = card.copies >= card.copiesForNextLevel && !maxed;
   const upgradeCost = UPGRADE_BASE[card.rarity] * card.level;
   const isLegendary = card.rarity === 'legendary';
+  const ability = abilityAtLevel(card);
+  const equipped = activeDeck.cards[card.slot] === card.id;
+  const equippable = canEquip(card, card.slot);
 
   return (
     <div className="bg-abyss relative h-full w-full overflow-hidden">
@@ -80,7 +94,7 @@ export function CardDetailScreen({ cardId }: CardDetailScreenProps) {
       <div className="relative h-full">
         <ScreenFrame
           title={card.owned ? card.name : 'Locked card'}
-          subtitle={`${RARITY_LABEL[card.rarity]} · ${CARD_KIND_LABEL[card.kind]}`}
+          subtitle={`${RARITY_LABEL[card.rarity]} · ${SLOT_LABEL[card.slot]}`}
           onBack={back}
           aside={
             <PixelBadge tone={TONE[card.rarity]} shimmer={isLegendary}>
@@ -95,21 +109,76 @@ export function CardDetailScreen({ cardId }: CardDetailScreenProps) {
                 <GameCard card={card} size="lg" locked={!card.owned} showProgress={false} static />
               </div>
 
-              {card.owned && (
-                <div className="mt-3 flex justify-center gap-2">
-                  <PixelBadge tone="neutral">Used 47×</PixelBadge>
-                  <PixelBadge tone="surf">31 wins</PixelBadge>
+              {/* Equipping from here is the point of the screen: a card is a
+                  move, so "put it on my bar" has to be one press away. */}
+              {equippable && (
+                <div className="mt-3 flex flex-col gap-2">
+                  <PixelButton
+                    variant={equipped ? 'secondary' : 'primary'}
+                    size="md"
+                    icon={equipped ? '✓' : '≈'}
+                    fullWidth
+                    disabled={equipped}
+                    onClick={() => equip(activeDeck.id, card.slot, card.id)}
+                  >
+                    {equipped
+                      ? `Equipped · ${SLOT_LABEL[card.slot]}`
+                      : `Equip as ${SLOT_LABEL[card.slot]}`}
+                  </PixelButton>
+                  <PixelButton
+                    variant="ghost"
+                    size="sm"
+                    icon="▤"
+                    fullWidth
+                    onClick={() => navigate('deckSelect', { next: null })}
+                  >
+                    Open {activeDeck.name}
+                  </PixelButton>
                 </div>
               )}
             </div>
 
             {/* What it does and how it grows. */}
             <div className="flex flex-col gap-3">
-              <PixelPanel title="Effect" variant="default" className="animate-rise-in">
+              <PixelPanel
+                title="Ability"
+                variant="default"
+                className="animate-rise-in"
+                headerAside={SLOT_LABEL[card.slot]}
+              >
                 <p className="text-[12px] leading-relaxed">{card.description}</p>
+                <p className="text-mist/45 mt-1.5 text-[10px] leading-snug italic">
+                  {card.flavour}
+                </p>
+
+                {/* The four numbers that decide whether it belongs in a deck. */}
+                <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  <AbilityStat label="Damage" value={`${ability.damage}`} tone={TEXT[card.rarity]} />
+                  <AbilityStat label="Cooldown" value={`${ability.cooldownS}s`} />
+                  <AbilityStat label="Range" value={`${ability.range}m`} />
+                  <AbilityStat
+                    label="Charge"
+                    value={ability.chargeS === 0 ? 'Instant' : `${ability.chargeS}s`}
+                  />
+                </div>
+
+                {ability.tags.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {ability.tags.map((tag) => (
+                      <span
+                        key={tag}
+                        className="bg-ocean text-mist/75 px-1.5 py-0.5 text-[9px] tracking-[0.12em] uppercase"
+                      >
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
                 {!card.owned && (
                   <p className="text-mist/50 mt-2 text-[10px] leading-snug">
-                    You do not own this card yet. Pull it from a pack to equip it.
+                    You do not own this card yet. Pull it from a pack to equip it in your{' '}
+                    {SLOT_LABEL[card.slot].toLowerCase()} slot.
                   </p>
                 )}
               </PixelPanel>
@@ -124,7 +193,7 @@ export function CardDetailScreen({ cardId }: CardDetailScreenProps) {
                   <div>
                     <div className="text-mist/50 text-[9px] tracking-[0.16em] uppercase">Now</div>
                     <div className={cn('text-2xl tabular-nums', TEXT[card.rarity])}>
-                      {statAtLevel(card, card.level)}
+                      {statText(card, card.level)}
                     </div>
                   </div>
 
@@ -136,7 +205,7 @@ export function CardDetailScreen({ cardId }: CardDetailScreenProps) {
                           Next level
                         </div>
                         <div className="text-hp text-2xl tabular-nums">
-                          {statAtLevel(card, card.level + 1)}
+                          {statText(card, card.level + 1)}
                         </div>
                       </div>
                     </>
@@ -229,7 +298,7 @@ export function CardDetailScreen({ cardId }: CardDetailScreenProps) {
               </div>
               <p className="text-[11px] leading-snug">
                 {card.name} would reach level {card.level + 1} — {card.stat.label.toLowerCase()}{' '}
-                {statAtLevel(card, card.level + 1)}.
+                {statText(card, card.level + 1)}.
               </p>
               <p className="text-mist/50 text-[10px]">
                 The full power-up ceremony arrives with the progression block.
