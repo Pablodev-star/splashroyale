@@ -98,7 +98,7 @@ narrow, typed interface.
 | ------------------------------------- | ------------------------------------------------------ | -------------------------------------------------------------------------------------- |
 | **1 — UI** (done)                     | `components/**`, `screens/**`, `state/**`, `index.css` | —                                                                                      |
 | **2A — Character sprites** (done)     | `game/sprites/**`                                      | Character palettes from `data/characters.ts`; exposes a sprite-playback API.            |
-| **2B — Water & reactive environment** | `components/water/**` (extends), shaders               | Map palettes from `data/maps.ts`.                                                      |
+| **2B — Water & reactive environment** (done) | `components/water/**`                           | Map palettes from `data/maps.ts`; actor positions from the arena.                        |
 | **2C — Splash animations**            | `game/vfx/**`                                          | Charge value from Block 3, ripple API from 2B.                                         |
 | **3 — Controls / physics / combat**   | `game/**`                                              | Renders into the `<MatchScreen />` slot and feeds `HudState`.                          |
 | **4 — Cards, shop, packs**            | `features/progression/**`                              | `ShopScreen`/`PackPreviewScreen`/`CollectionScreen`, `data/cards.ts`, `data/packs.ts`. |
@@ -131,7 +131,38 @@ Two rules the rig depends on:
 - `right` is `left` mirrored at bake time by reflecting pixels inside the cell —
   never a canvas `scale(-1, 1)`, which can land art off the pixel grid.
 
-### 4.2 The HUD contract (Block 1 → Block 3)
+### 4.2 The water contract (Block 2B → Block 3)
+
+The surface answers back through two entry points:
+
+```ts
+// Anything that moves: wake and dive/surface events are derived for you.
+useWaterReactions(waterRef, actors); // actors are in *canvas* space, 0..1
+// One-off impacts (2C splashes, a projectile landing).
+waterRef.current?.spawnRipple(nx, ny, strength);
+```
+
+Two things to know before touching it:
+
+- **Actor coordinates are canvas space, not arena space.** The fighter layer
+  starts partway down the frame (`WATER_TOP` in `ArenaView`), so arena `y` has to
+  be rebased before the water sees it, or wakes appear above the swimmers.
+- **`strength` sets a ripple's size, not its visibility.** Radius, ring width and
+  life scale with it; foam brightness deliberately barely does. Scaling foam by
+  strength as well pushes weak ripples under the foam threshold, where they
+  render as literally nothing.
+
+Ripples are a **height field**, not decoration: `sampleRipples` returns a `lift`
+that is added to the wave height (so depth bands and caustics bend around a
+ripple) and a separate, sharper `foam` that places the visible crest. Thresholding
+the deformation rather than stroking a circle is what keeps a ring from reading as
+a drawn ellipse — it breaks up over waves and where two ripples cross.
+
+Cost is bounded by rejecting pixels outside each ripple's bounding box before any
+`sqrt`. Measured on a full 44k-pixel arena buffer: 16% of the 24fps frame budget
+with no ripples, 22% with thirty live.
+
+### 4.3 The HUD contract (Block 1 → Block 3)
 
 `HudState` in `src/types/game.ts` is the single hand-off point. Block 3 must
 produce this object every frame; the HUD is otherwise pure and stateless:
@@ -146,7 +177,7 @@ interface HudState {
 }
 ```
 
-### 4.3 The navigation contract
+### 4.4 The navigation contract
 
 Screens never import each other. They call `useNavigation()`:
 

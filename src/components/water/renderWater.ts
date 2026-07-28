@@ -7,8 +7,11 @@ import type { GameMap, WaterPalette } from '@/types/game';
  * ARCHITECTURE.md §6) which the DOM then upscales with `image-rendering:
  * pixelated`, so we get true chunky pixels with no shader plumbing.
  *
- * Block 2B replaces the in-match surface with a Three.js shader but reuses these
- * palettes and the same wave math, so the menus and the arena stay coherent.
+ * Block 2B kept this renderer rather than moving the in-match surface to a
+ * Three.js shader as originally sketched: §2.1 reserves WebGL for the match
+ * *scene*, and routing the water through a second renderer would have meant two
+ * implementations of the same wave math drifting apart between menus and arena.
+ * Ripples are simulated here instead, as a height field the surface reads from.
  */
 
 export type WaterVariant = 'background' | 'arena';
@@ -93,6 +96,121 @@ const TAU = Math.PI * 2;
 const RIPPLE_LIFE = 1.6;
 
 /**
+ * How far a full-strength ripple pushes the depth bands, in reference pixels.
+ * Tuned by eye: below ~8 the bands barely move and the ripple reads as a drawn
+ * ring; far above this the surface tears into stripes.
+ */
+const RIPPLE_BAND_LIFT = 15;
+
+/** How far a ripple displaces caustic sampling — the refraction cue. */
+const RIPPLE_REFRACT = 7;
+
+/**
+ * A ripple resolved to this frame. Derived once per frame rather than per pixel:
+ * the inner loop runs 44k times, so anything hoistable must be hoisted.
+ */
+interface PreparedRipple {
+  x: number;
+  y: number;
+  /** Radius of the advancing ring right now, in buffer pixels. */
+  front: number;
+  /** Half-width of the ring band. Outside it the ripple contributes nothing. */
+  width: number;
+  /** Height amplitude driving the surface deformation, 0..1. */
+  amp: number;
+  /**
+   * Foam amplitude. Deliberately separate from `amp` and faded more slowly: the
+   * deformation and the visible crest want different curves, and driving both
+   * from one value means either the foam smothers the deformation or the ripple
+   * loses its crest halfway through its life.
+   */
+  foamAmp: number;
+  /** front + width — used to reject pixels with four comparisons. */
+  reach: number;
+}
+
+function prepareRipples(
+  ripples: Ripple[],
+  time: number,
+  unit: number,
+): PreparedRipple[] {
+  const prepared: PreparedRipple[] = [];
+  for (const ripple of ripples) {
+    const age = time - ripple.bornAt;
+    const life = RIPPLE_LIFE * (0.6 + ripple.strength * 0.6);
+    if (age < 0 || age > life) continue;
+    const progress = age / life;
+    // Wide enough that the deformed water outside the foam peak is readable.
+    const width = (2 + ripple.strength * 2.5) * unit;
+    // Decelerating front: fast expansion that eases out reads as water, a
+    // linear one reads as an animated circle. Kept small relative to the pool —
+    // a ring much past this stops reading as a ripple and becomes a crater.
+    const front = (2 + ripple.strength * 13) * unit * Math.sqrt(progress);
+    prepared.push({
+      x: ripple.x,
+      y: ripple.y,
+      front,
+      width,
+      amp: ripple.strength * (1 - progress),
+      // Only weakly tied to strength. Strength already sets the ring's radius,
+      // width and life, which is what carries "how big was that splash"; scaling
+      // foam by it as well pushed weak ripples (a swimmer's wake) under the foam
+      // threshold entirely, so they rendered as nothing at all.
+      foamAmp: (0.55 + ripple.strength * 0.45) * (1 - progress * progress),
+      reach: front + width,
+    });
+  }
+  return prepared;
+}
+
+/** Reused across every pixel — allocating here would mean 44k objects a frame. */
+const sample = { lift: 0, foam: 0 };
+
+/**
+ * Samples all ripples at a point, yielding two separate quantities.
+ *
+ * This is what makes the water *reactive* rather than decorated:
+ * - `lift` is added to the wave height, so depth bands and caustics bend around
+ *   a ripple instead of having a ring drawn on top of them. Broad and smooth, so
+ *   overlapping ripples sum into a believable surface.
+ * - `foam` decides where the visible crest goes. Cubed, so it stays a tight
+ *   highlight on the peak and leaves the deformation either side of it readable,
+ *   and taken as a max rather than a sum so crossing ripples don't blow out.
+ */
+function sampleRipples(
+  x: number,
+  y: number,
+  prepared: PreparedRipple[],
+  squash: number,
+): typeof sample {
+  let lift = 0;
+  let foam = 0;
+
+  for (let i = 0; i < prepared.length; i += 1) {
+    const r = prepared[i];
+    const dx = x - r.x;
+    if (dx > r.reach || dx < -r.reach) continue;
+    const dy = (y - r.y) / squash;
+    if (dy > r.reach || dy < -r.reach) continue;
+
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    const band = distance - r.front;
+    if (band > r.width || band < -r.width) continue;
+
+    // Cosine bump across the ring: crest at the front, easing to flat at the
+    // band edges, so neighbouring ripples add up smoothly.
+    const bump = Math.cos((band / r.width) * (Math.PI / 2));
+    lift += bump * r.amp;
+    const crest = bump * bump * bump * r.foamAmp;
+    if (crest > foam) foam = crest;
+  }
+
+  sample.lift = lift;
+  sample.foam = foam;
+  return sample;
+}
+
+/**
  * Horizontal displacement of the water surface at a given column, in pixels.
  * Exported so Block 2C can spawn splashes that sit exactly on a wave crest.
  */
@@ -138,6 +256,11 @@ export function renderWater(image: ImageData, options: RenderWaterOptions): void
   // art reads the same at preview, menu and full-screen resolutions.
   const unit = Math.max(0.45, Math.min(2, height / 90));
 
+  // Perspective squash: rings read as ellipses on the arena floor plane.
+  const squash = variant === 'arena' ? 0.45 : 0.6;
+  const prepared = prepareRipples(ripples, time, unit);
+  const hasRipples = prepared.length > 0;
+
   for (let y = 0; y < height; y += 1) {
     // Row-invariant work is hoisted out of the inner loop.
     const bounds = variant === 'arena' ? poolBounds(y, width, height) : null;
@@ -176,7 +299,17 @@ export function renderWater(image: ImageData, options: RenderWaterOptions): void
       }
 
       const wave = waveOffset(x, time, surface, unit);
-      const bandFloat = ((depthT * height + wave) / height) * bandCount;
+      // Ripples raise and lower the surface, so they push the depth bands and
+      // the caustic net around — the water deforms instead of being drawn over.
+      let lift = 0;
+      let foam = 0;
+      if (hasRipples) {
+        const sampled = sampleRipples(x, y, prepared, squash);
+        lift = sampled.lift;
+        foam = sampled.foam;
+      }
+      const bandFloat =
+        ((depthT * height + wave + lift * RIPPLE_BAND_LIFT * unit) / height) * bandCount;
       let band = Math.floor(bandFloat);
       band = band < 0 ? 0 : band > bandCount - 1 ? bandCount - 1 : band;
 
@@ -204,8 +337,10 @@ export function renderWater(image: ImageData, options: RenderWaterOptions): void
 
       // Caustic net: three interfering sines thresholded into two steps. Tight
       // cells — big soft blobs would read as clouds, not light on water.
-      const cx = x / unit;
-      const cy = y / unit;
+      // Refraction: the same lift displaces where the caustics are sampled, so
+      // light on the floor scatters as a ripple passes over it.
+      const cx = (x + lift * RIPPLE_REFRACT * unit) / unit;
+      const cy = (y + lift * RIPPLE_REFRACT * 0.7 * unit) / unit;
       const caustic =
         Math.sin(cx * 0.32 + time * 1.1) +
         Math.sin(cy * 0.46 - time * 0.85) +
@@ -237,6 +372,18 @@ export function renderWater(image: ImageData, options: RenderWaterOptions): void
         rgb = palette.crest;
       }
 
+      // Foam riding the ripple crest. Thresholding the deformation (rather than
+      // stroking a circle) means the ring breaks up over waves and where two
+      // ripples meet, which is what stops it reading as a drawn ellipse.
+      // Only the very peak becomes foam. Wider thresholds overpaint the ring and
+      // hide the band deformation underneath it, which makes the whole thing
+      // collapse back into looking like a stroked ellipse.
+      if (foam > 0.62) {
+        rgb = palette.crest;
+      } else if (foam > 0.34) {
+        rgb = palette.caustic;
+      }
+
       // Sparkles: single bright pixels, re-rolled 8 times a second.
       if (hash(x, y, sparkleFrame) < surface.sparkleDensity * 0.06) {
         rgb = palette.sparkle;
@@ -248,70 +395,10 @@ export function renderWater(image: ImageData, options: RenderWaterOptions): void
       data[index + 3] = 255;
     }
   }
-
-  drawRipples(image, { width, height, time, ripples, palette, variant, unit });
 }
 
 function clampBand(band: number, count: number): number {
   return band < 0 ? 0 : band > count - 1 ? count - 1 : band;
-}
-
-/**
- * Ripple rings drawn directly into the buffer as squashed pixel circles.
- * Block 2B feeds this from real gameplay events (attack landing, dive, impact);
- * Block 1 only uses the ambient spawner in <WaterCanvas />.
- */
-function drawRipples(
-  image: ImageData,
-  {
-    width,
-    height,
-    time,
-    ripples,
-    palette,
-    variant,
-    unit,
-  }: {
-    width: number;
-    height: number;
-    time: number;
-    ripples: Ripple[];
-    palette: CompiledPalette;
-    variant: WaterVariant;
-    unit: number;
-  },
-): void {
-  const data = image.data;
-  // Perspective squash: rings read as ellipses on the arena floor plane.
-  const squash = variant === 'arena' ? 0.45 : 0.6;
-
-  for (const ripple of ripples) {
-    const age = time - ripple.bornAt;
-    const life = RIPPLE_LIFE * (0.6 + ripple.strength * 0.6);
-    if (age < 0 || age > life) continue;
-
-    const progress = age / life;
-    const radius = (3 + ripple.strength * 22) * progress;
-    const rings = progress < 0.45 ? 2 : 1;
-    const color = progress < 0.6 ? palette.crest : palette.caustic;
-
-    for (let ring = 0; ring < rings; ring += 1) {
-      const r = radius - ring * 3 * unit;
-      if (r < 1) continue;
-      const steps = Math.max(12, Math.round(r * 6));
-      for (let step = 0; step < steps; step += 1) {
-        const angle = (step / steps) * TAU;
-        const px = Math.round(ripple.x + Math.cos(angle) * r);
-        const py = Math.round(ripple.y + Math.sin(angle) * r * squash);
-        if (px < 0 || px >= width || py < 0 || py >= height) continue;
-        const index = (py * width + px) * 4;
-        data[index] = color[0];
-        data[index + 1] = color[1];
-        data[index + 2] = color[2];
-        data[index + 3] = 255;
-      }
-    }
-  }
 }
 
 export { RIPPLE_LIFE };

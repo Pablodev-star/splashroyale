@@ -1,6 +1,7 @@
-import { useRef, type ReactNode } from 'react';
+import { useMemo, useRef, type ReactNode } from 'react';
 import type { GameMap, MinimapEntity } from '@/types/game';
 import { WaterCanvas, type WaterCanvasHandle } from '@/components/water/WaterCanvas';
+import { useWaterReactions, type WaterActor } from '@/components/water/useWaterReactions';
 import { FighterBillboard, type Facing } from './FighterBillboard';
 import type { AnimationId } from '@/game/sprites';
 import { CHARACTERS } from '@/data/characters';
@@ -35,6 +36,13 @@ export interface ArenaViewProps {
  * standing in it. Block 3 replaces the contents with the Three.js scene and
  * drives positions from the physics step; the framing and the HUD slot stay.
  */
+/**
+ * Top of the water body as a fraction of the frame. The fighter layer starts
+ * here (`top-[22%]` below — Tailwind needs the literal), so actor coordinates
+ * have to be rebased onto the full-frame canvas before the water can use them.
+ */
+const WATER_TOP = 0.22;
+
 export function ArenaView({
   map,
   fighters,
@@ -44,6 +52,26 @@ export function ArenaView({
 }: ArenaViewProps) {
   const waterRef = useRef<WaterCanvasHandle | null>(null);
 
+  // Everything that disturbs the surface, in canvas space (Block 2B).
+  const actors = useMemo<WaterActor[]>(
+    () => [
+      ...fighters.map((fighter) => ({
+        id: fighter.id,
+        x: fighter.x,
+        y: WATER_TOP + fighter.y * (1 - WATER_TOP),
+        submerged: fighter.submerged,
+      })),
+      ...projectiles.map((projectile) => ({
+        id: `fx-${projectile.id}`,
+        x: projectile.x,
+        y: WATER_TOP + projectile.y * (1 - WATER_TOP),
+      })),
+    ],
+    [fighters, projectiles],
+  );
+
+  useWaterReactions(waterRef, actors);
+
   return (
     <div className={cn('bg-abyss relative h-full w-full overflow-hidden', className)}>
       <WaterCanvas
@@ -52,6 +80,10 @@ export function ArenaView({
         variant="arena"
         pixelSize={5}
         fps={24}
+        // The fighters now disturb the surface themselves (Block 2B), so the
+        // generic random spawner would only add ripples nothing in the match
+        // caused — noise on top of the signal.
+        ambientRipples={false}
         className="absolute inset-0"
       />
 
