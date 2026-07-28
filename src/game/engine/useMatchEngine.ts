@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { AbilitySlot, Deck, HudState } from '@/types/game';
-import { CARD_BY_ID, SLOT_ORDER } from '@/data/cards';
-import { BOT_DECK, sanitiseDeck } from '@/data/decks';
+import { SLOT_ORDER } from '@/data/cards';
+import { BOT_DECK, sanitiseDeck, type CardLookup } from '@/data/decks';
+import { useCollection } from '@/state/PlayerContext';
 import { CHARACTERS } from '@/data/characters';
 import { useAnimationFrame } from '@/hooks/useAnimationFrame';
 import { MatchEngine } from './MatchEngine';
@@ -61,12 +62,18 @@ export interface MatchEngineOptions {
   withBot?: boolean;
 }
 
-function loadoutFor(deck: Deck): Loadout {
-  const safe = sanitiseDeck(deck) ?? deck;
+/**
+ * Resolves a deck into three cards at the levels the player has them.
+ *
+ * `ownedOnly` is false for bots: their deck is authored in the repo and is not
+ * limited by what this account happens to have pulled.
+ */
+function loadoutFor(deck: Deck, lookup: CardLookup, ownedOnly = true): Loadout {
+  const safe = sanitiseDeck(deck, lookup, ownedOnly) ?? deck;
   return {
-    attack1: CARD_BY_ID[safe.cards.attack1],
-    attack2: CARD_BY_ID[safe.cards.attack2],
-    ultimate: CARD_BY_ID[safe.cards.ultimate],
+    attack1: lookup[safe.cards.attack1],
+    attack2: lookup[safe.cards.attack2],
+    ultimate: lookup[safe.cards.ultimate],
   };
 }
 
@@ -91,6 +98,7 @@ export function useMatchEngine({
 }: MatchEngineOptions): MatchEngineResult {
   const inputRef = useRef<PlayerInput>({ ...EMPTY_INPUT });
   const botRef = useRef<Bot>(new Bot());
+  const { cardById } = useCollection();
 
   // The deck is captured once per match. Re-reading it every frame would let a
   // deck edited in another tab change the moveset mid-fight.
@@ -102,14 +110,14 @@ export function useMatchEngine({
         name: playerName,
         tag: 'You',
         colors: player.colors,
-        loadout: loadoutFor(deck),
+        loadout: loadoutFor(deck, cardById),
       },
       opponent: {
         id: 'opponent',
         name: opponentName,
         tag: withBot ? 'Bot' : 'Rival',
         colors: rival.colors,
-        loadout: loadoutFor(BOT_DECK),
+        loadout: loadoutFor(BOT_DECK, cardById, false),
       },
       durationMs,
     });

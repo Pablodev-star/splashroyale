@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { CARD_BY_ID, RARITY_LABEL, SLOT_LABEL, abilityAtLevel, statAtLevel } from '@/data/cards';
+import { RARITY_LABEL, SLOT_LABEL, abilityAtLevel, statAtLevel } from '@/data/cards';
+import { upgradeCostGold } from '@/game/progression/economy';
 import { canEquip } from '@/data/decks';
 import type { AbilityCard, Rarity } from '@/types/game';
 import { GameCard } from '@/components/cards/GameCard';
@@ -11,6 +12,7 @@ import { PixelBadge } from '@/components/ui/PixelBadge';
 import { PixelBar } from '@/components/ui/PixelBar';
 import { useNavigation } from '@/state/NavigationContext';
 import { useDecks } from '@/state/DeckContext';
+import { usePlayer } from '@/state/PlayerContext';
 import { formatNumber } from '@/lib/format';
 import { cn } from '@/lib/cn';
 
@@ -32,14 +34,6 @@ const TONE: Record<Rarity, 'common' | 'rare' | 'epic' | 'legendary'> = {
   legendary: 'legendary',
 };
 
-/** Gold cost to buy the next level outright. Scales with rarity and level. */
-const UPGRADE_BASE: Record<Rarity, number> = {
-  common: 120,
-  rare: 400,
-  epic: 1200,
-  legendary: 3000,
-};
-
 function AbilityStat({ label, value, tone }: { label: string; value: string; tone?: string }) {
   return (
     <div className="bg-abyss/60 pixel-border-thin px-2 py-1.5">
@@ -58,14 +52,18 @@ function statText(card: AbilityCard, level: number): string {
  * The card's own page: the card itself presented large with its rarity effects,
  * next to what it does, how it grows and how close the next level is.
  *
- * PLACEHOLDER(Block 5): upgrading is presented but inert — the essence economy
- * and the level-up animation belong to the progression block.
+ * Upgrading is live (Block 4): duplicates pulled from packs bank as copies, and
+ * spending them — or buying the level with gold — raises the card's level, which
+ * `abilityAtLevel` feeds straight into combat. The number on this page is the
+ * number the ability deals.
  */
 export function CardDetailScreen({ cardId }: CardDetailScreenProps) {
   const { back, navigate } = useNavigation();
   const { activeDeck, equip } = useDecks();
-  const card = CARD_BY_ID[cardId];
-  const [upgrading, setUpgrading] = useState(false);
+  const { profile, cardById, levelUpCard, buyCardLevel } = usePlayer();
+  const card = cardById[cardId];
+  /** Holds the level the card *was* at, so the ceremony can show the jump. */
+  const [levelledFrom, setLevelledFrom] = useState<number | null>(null);
 
   if (!card) {
     return (
@@ -80,7 +78,8 @@ export function CardDetailScreen({ cardId }: CardDetailScreenProps) {
   const maxed = card.level >= card.maxLevel;
   const progress = card.copiesForNextLevel ? Math.min(1, card.copies / card.copiesForNextLevel) : 0;
   const ready = card.copies >= card.copiesForNextLevel && !maxed;
-  const upgradeCost = UPGRADE_BASE[card.rarity] * card.level;
+  const upgradeCost = upgradeCostGold(card.rarity, card.level);
+  const canBuyLevel = !maxed && upgradeCost <= profile.gold;
   const isLegendary = card.rarity === 'legendary';
   const ability = abilityAtLevel(card);
   const equipped = activeDeck.cards[card.slot] === card.id;
@@ -261,24 +260,31 @@ export function CardDetailScreen({ cardId }: CardDetailScreenProps) {
                         size="md"
                         icon="▲"
                         disabled={!ready}
-                        onClick={() => setUpgrading(true)}
+                        onClick={() => {
+                          const from = card.level;
+                          if (levelUpCard(card.id)) setLevelledFrom(from);
+                        }}
                       >
                         {ready ? 'Level up' : `Need ${card.copiesForNextLevel - card.copies} more`}
                       </PixelButton>
                       <PixelButton
-                        variant="ghost"
+                        variant={canBuyLevel ? 'gold' : 'ghost'}
                         size="md"
                         icon="◆"
-                        disabled
+                        disabled={!canBuyLevel}
                         aside={formatNumber(upgradeCost)}
+                        onClick={() => {
+                          const from = card.level;
+                          if (buyCardLevel(card.id)) setLevelledFrom(from);
+                        }}
                       >
                         Buy level
                       </PixelButton>
                     </div>
 
                     <p className="text-mist/45 mt-2 text-[10px] leading-snug">
-                      Duplicates from packs stack here. Spending gold skips the wait — both routes
-                      come online with the progression block.
+                      Duplicates from packs stack here. Spending gold skips the wait — you have{' '}
+                      ◆ {formatNumber(profile.gold)}.
                     </p>
                   </>
                 )}
@@ -288,8 +294,9 @@ export function CardDetailScreen({ cardId }: CardDetailScreenProps) {
         </ScreenFrame>
       </div>
 
-      {/* Level-up flourish placeholder. */}
-      {upgrading && (
+      {/* Level-up ceremony. Shown after the level has already been applied —
+          the card behind it is already at its new level. */}
+      {levelledFrom !== null && (
         <div className="bg-abyss/88 absolute inset-0 z-40 flex items-center justify-center p-4">
           <PixelPanel title="Level up" variant="gold" className="animate-pop-in w-full max-w-xs">
             <div className="flex flex-col items-center gap-3 text-center">
@@ -297,17 +304,19 @@ export function CardDetailScreen({ cardId }: CardDetailScreenProps) {
                 <GameCard card={card} size="md" showProgress={false} static />
               </div>
               <p className="text-[11px] leading-snug">
-                {card.name} would reach level {card.level + 1} — {card.stat.label.toLowerCase()}{' '}
-                {statText(card, card.level + 1)}.
+                {card.name} is now level {card.level}.
               </p>
-              <p className="text-mist/50 text-[10px]">
-                The full power-up ceremony arrives with the progression block.
+              <p className="text-gold text-[12px] tabular-nums">
+                {card.stat.label}: {statText(card, levelledFrom)} → {statText(card, card.level)}
+              </p>
+              <p className="text-mist/50 text-[10px] leading-snug">
+                It fights at the new number from your next match.
               </p>
               <PixelButton
                 variant="primary"
                 size="md"
                 fullWidth
-                onClick={() => setUpgrading(false)}
+                onClick={() => setLevelledFrom(null)}
               >
                 Close
               </PixelButton>

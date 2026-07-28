@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { AbilityCard, AbilitySlot, Rarity } from '@/types/game';
 import {
-  CARDS,
   RARITY_LABEL,
   RARITY_ORDER,
   SLOT_GLYPH,
@@ -13,6 +12,7 @@ import { GameCard } from '@/components/cards/GameCard';
 import { PixelBadge } from '@/components/ui/PixelBadge';
 import { PixelButton } from '@/components/ui/PixelButton';
 import { useNavigation } from '@/state/NavigationContext';
+import { useCollection } from '@/state/PlayerContext';
 import { cn } from '@/lib/cn';
 
 type RarityFilter = 'all' | Rarity;
@@ -46,6 +46,7 @@ function sortCards(cards: AbilityCard[]): AbilityCard[] {
 
 export function CollectionScreen() {
   const { navigate, back } = useNavigation();
+  const { cards: CARDS } = useCollection();
   const [rarity, setRarity] = useState<RarityFilter>('all');
   const [slot, setSlot] = useState<SlotFilter>('all');
 
@@ -57,7 +58,7 @@ export function CollectionScreen() {
             (rarity === 'all' || card.rarity === rarity) && (slot === 'all' || card.slot === slot),
         ),
       ),
-    [rarity, slot],
+    [CARDS, rarity, slot],
   );
 
   const owned = CARDS.filter((card) => card.owned).length;
@@ -70,7 +71,7 @@ export function CollectionScreen() {
         const all = CARDS.filter((card) => card.rarity === value);
         return { rarity: value, owned: all.filter((card) => card.owned).length, total: all.length };
       }),
-    [],
+    [CARDS],
   );
 
   return (

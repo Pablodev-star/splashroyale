@@ -1,4 +1,5 @@
-import type { AbilityCard, AbilitySlot, Rarity } from '@/types/game';
+import type { AbilityCard, AbilitySlot, CardDefinition, CardProgress, Rarity } from '@/types/game';
+import { MAX_CARD_LEVEL, copiesForNextLevel } from '@/game/progression/economy';
 
 /**
  * The ability catalogue.
@@ -10,10 +11,10 @@ import type { AbilityCard, AbilitySlot, Rarity } from '@/types/game';
  * itself with a cost, not with exclusivity. Higher rarities hit harder but wait
  * longer, charge slower, or trade reach for damage.
  *
- * PLACEHOLDER(Block 4): copies, levels and ownership are hand-authored here.
- * The progression block replaces them with the real inventory.
+ * Definitions only. Level, copies and ownership are the *player's*, held in the
+ * progression store and merged in by `resolveCard`.
  */
-export const CARDS: AbilityCard[] = [
+export const CARD_CATALOG: CardDefinition[] = [
   /* ---------------------------------------------------------------- common */
   {
     id: 'waterJet',
@@ -22,11 +23,6 @@ export const CARDS: AbilityCard[] = [
     rarity: 'common',
     description: 'Hold to pressurise, release a straight jet of water.',
     flavour: 'The first thing anyone learns. Nothing fancy, always there.',
-    level: 3,
-    maxLevel: 5,
-    copies: 7,
-    copiesForNextLevel: 12,
-    owned: true,
     ability: { damage: 14, cooldownS: 0.8, range: 7, chargeS: 0.9, tags: ['Charge'] },
     stat: { drives: 'damage', label: 'Jet damage', base: 14, perLevel: 2, unit: '' },
   },
@@ -37,11 +33,6 @@ export const CARDS: AbilityCard[] = [
     rarity: 'common',
     description: 'A fast close-range slap of water. No charge, no wait.',
     flavour: 'For when the other one is already inside your reach.',
-    level: 2,
-    maxLevel: 5,
-    copies: 5,
-    copiesForNextLevel: 12,
-    owned: true,
     ability: { damage: 9, cooldownS: 0.35, range: 2.5, chargeS: 0, tags: ['Instant'] },
     stat: { drives: 'damage', label: 'Slap damage', base: 9, perLevel: 1.5, unit: '' },
   },
@@ -52,11 +43,6 @@ export const CARDS: AbilityCard[] = [
     rarity: 'common',
     description: 'A kick that shoves the target back and drags submerged foes up.',
     flavour: 'The pool-fight classic. Cheap, rude, and it always lands.',
-    level: 4,
-    maxLevel: 5,
-    copies: 9,
-    copiesForNextLevel: 16,
-    owned: true,
     ability: { damage: 11, cooldownS: 2.4, range: 2.2, chargeS: 0, tags: ['Knockback', 'Surfaces'] },
     stat: { label: 'Kick force', base: 20, perLevel: 5, unit: '%' },
   },
@@ -67,11 +53,6 @@ export const CARDS: AbilityCard[] = [
     rarity: 'common',
     description: 'Heave a wall of water forward, pushing everything in a short cone.',
     flavour: 'More about where they end up than how much it hurts.',
-    level: 1,
-    maxLevel: 5,
-    copies: 3,
-    copiesForNextLevel: 12,
-    owned: true,
     ability: { damage: 7, cooldownS: 1.8, range: 3.4, chargeS: 0, tags: ['Cone', 'Knockback'] },
     stat: { label: 'Push distance', base: 2.5, perLevel: 0.4, unit: 'm' },
   },
@@ -82,11 +63,6 @@ export const CARDS: AbilityCard[] = [
     rarity: 'common',
     description: 'Raise a wave that rolls outward from you and knocks everyone back.',
     flavour: 'Not the biggest wave in the pool. Still enough to end an argument.',
-    level: 2,
-    maxLevel: 5,
-    copies: 4,
-    copiesForNextLevel: 10,
-    owned: true,
     ability: { damage: 26, cooldownS: 45, range: 6, chargeS: 0, tags: ['Radial', 'Knockback'] },
     stat: { drives: 'damage', label: 'Wave damage', base: 26, perLevel: 4, unit: '' },
   },
@@ -97,11 +73,6 @@ export const CARDS: AbilityCard[] = [
     rarity: 'common',
     description: 'Leap and land flat. Everyone nearby takes the impact and the wave.',
     flavour: 'Technically an ultimate. Emotionally, a decision.',
-    level: 1,
-    maxLevel: 5,
-    copies: 2,
-    copiesForNextLevel: 10,
-    owned: true,
     ability: { damage: 30, cooldownS: 40, range: 3.5, chargeS: 1.2, tags: ['Leap', 'Radial'] },
     stat: { drives: 'damage', label: 'Impact damage', base: 30, perLevel: 5, unit: '' },
   },
@@ -114,11 +85,6 @@ export const CARDS: AbilityCard[] = [
     rarity: 'rare',
     description: 'A tight, long-range jet that punches through the first target hit.',
     flavour: 'Thin as a wire and twice as far as it has any right to go.',
-    level: 2,
-    maxLevel: 5,
-    copies: 3,
-    copiesForNextLevel: 8,
-    owned: true,
     ability: { damage: 19, cooldownS: 1.1, range: 11, chargeS: 1.2, tags: ['Charge', 'Piercing'] },
     stat: { drives: 'damage', label: 'Jet damage', base: 19, perLevel: 3, unit: '' },
   },
@@ -129,11 +95,6 @@ export const CARDS: AbilityCard[] = [
     rarity: 'rare',
     description: 'The shot skims off the surface once, hitting anything at each bounce.',
     flavour: 'Aim at the water, not at them. It works, somehow.',
-    level: 1,
-    maxLevel: 5,
-    copies: 2,
-    copiesForNextLevel: 8,
-    owned: true,
     ability: { damage: 13, cooldownS: 0.9, range: 9, chargeS: 0.6, tags: ['Bounces ×2'] },
     stat: { label: 'Skim distance', base: 2, perLevel: 0.5, unit: 'm' },
   },
@@ -144,11 +105,6 @@ export const CARDS: AbilityCard[] = [
     rarity: 'rare',
     description: 'Release a cluster of bubbles that rise and pop under whoever is above.',
     flavour: 'Slow, obvious, and impossible to leave alone.',
-    level: 1,
-    maxLevel: 5,
-    copies: 1,
-    copiesForNextLevel: 8,
-    owned: true,
     ability: { damage: 16, cooldownS: 3.2, range: 4.5, chargeS: 0, tags: ['Delayed', 'Area'] },
     stat: { label: 'Bubbles', base: 4, perLevel: 1, unit: '' },
   },
@@ -159,11 +115,6 @@ export const CARDS: AbilityCard[] = [
     rarity: 'rare',
     description: 'Drag the nearest fighter toward you along the current.',
     flavour: 'The pool decides where they stand now, not them.',
-    level: 1,
-    maxLevel: 5,
-    copies: 0,
-    copiesForNextLevel: 8,
-    owned: false,
     ability: { damage: 8, cooldownS: 4, range: 6.5, chargeS: 0.4, tags: ['Pull'] },
     stat: { label: 'Pull distance', base: 3, perLevel: 0.6, unit: 'm' },
   },
@@ -174,11 +125,6 @@ export const CARDS: AbilityCard[] = [
     rarity: 'rare',
     description: 'A wave crosses the entire arena in one direction, carrying everything with it.',
     flavour: 'You do not aim it. You point yourself and let go.',
-    level: 1,
-    maxLevel: 5,
-    copies: 1,
-    copiesForNextLevel: 6,
-    owned: true,
     ability: { damage: 34, cooldownS: 55, range: 16, chargeS: 0, tags: ['Arena-wide', 'Carries'] },
     stat: { drives: 'damage', label: 'Surge damage', base: 34, perLevel: 5, unit: '' },
   },
@@ -189,11 +135,6 @@ export const CARDS: AbilityCard[] = [
     rarity: 'rare',
     description: 'Fill a stretch of water with chlorine. It burns and blurs whoever stays in it.',
     flavour: 'Nobody wins the fight in there. They just leave.',
-    level: 1,
-    maxLevel: 5,
-    copies: 0,
-    copiesForNextLevel: 6,
-    owned: false,
     ability: { damage: 28, cooldownS: 50, range: 5, chargeS: 0, tags: ['Zone', 'Over time'] },
     stat: { label: 'Cloud duration', base: 6, perLevel: 1, unit: 's' },
   },
@@ -206,11 +147,6 @@ export const CARDS: AbilityCard[] = [
     rarity: 'epic',
     description: 'Above 60% charge the jet forks into three streams that spread as they travel.',
     flavour: 'One of them will find you. Probably two.',
-    level: 1,
-    maxLevel: 5,
-    copies: 0,
-    copiesForNextLevel: 4,
-    owned: true,
     ability: { damage: 23, cooldownS: 1.4, range: 8.5, chargeS: 1.4, tags: ['Charge', 'Spread ×3'] },
     stat: { label: 'Split threshold', base: 60, perLevel: -4, unit: '% charge' },
   },
@@ -221,11 +157,6 @@ export const CARDS: AbilityCard[] = [
     rarity: 'epic',
     description: 'A sustained beam of high-pressure water that keeps hitting while you hold it.',
     flavour: 'Cut the pool in half and see who is standing on the wrong side.',
-    level: 1,
-    maxLevel: 5,
-    copies: 0,
-    copiesForNextLevel: 4,
-    owned: false,
     ability: { damage: 30, cooldownS: 3.5, range: 12, chargeS: 1.8, tags: ['Beam', 'Piercing'] },
     stat: { label: 'Beam duration', base: 1.5, perLevel: 0.25, unit: 's' },
   },
@@ -236,11 +167,6 @@ export const CARDS: AbilityCard[] = [
     rarity: 'epic',
     description: 'Spin once, kicking a ring of water outward in every direction.',
     flavour: 'The kick, but you stopped caring which way they were coming from.',
-    level: 1,
-    maxLevel: 5,
-    copies: 0,
-    copiesForNextLevel: 4,
-    owned: true,
     ability: { damage: 21, cooldownS: 4.5, range: 3.2, chargeS: 0, tags: ['Radial', 'Knockback'] },
     stat: { label: 'Ring radius', base: 3.2, perLevel: 0.3, unit: 'm' },
   },
@@ -251,11 +177,6 @@ export const CARDS: AbilityCard[] = [
     rarity: 'epic',
     description: 'Sink a charge that detonates two seconds later, hitting hardest underwater.',
     flavour: 'Diving used to be safe.',
-    level: 1,
-    maxLevel: 5,
-    copies: 0,
-    copiesForNextLevel: 4,
-    owned: false,
     ability: { damage: 27, cooldownS: 6, range: 5, chargeS: 0, tags: ['Delayed', 'Anti-dive'] },
     stat: { label: 'Blast radius', base: 2.8, perLevel: 0.35, unit: 'm' },
   },
@@ -266,11 +187,6 @@ export const CARDS: AbilityCard[] = [
     rarity: 'epic',
     description: 'Open a whirlpool that pulls everyone toward its centre and holds them under.',
     flavour: 'The floor of the pool opens up and politely asks them down.',
-    level: 1,
-    maxLevel: 5,
-    copies: 0,
-    copiesForNextLevel: 3,
-    owned: false,
     ability: { damage: 38, cooldownS: 65, range: 7, chargeS: 0, tags: ['Pull', 'Drowns'] },
     stat: { label: 'Whirlpool radius', base: 4, perLevel: 0.6, unit: 'm' },
   },
@@ -281,11 +197,6 @@ export const CARDS: AbilityCard[] = [
     rarity: 'epic',
     description: 'Six geysers erupt across the arena, launching whoever is standing on them.',
     flavour: 'You cannot dodge all of them. You can dodge most of them.',
-    level: 1,
-    maxLevel: 5,
-    copies: 0,
-    copiesForNextLevel: 3,
-    owned: false,
     ability: { damage: 33, cooldownS: 60, range: 16, chargeS: 0, tags: ['Arena-wide', 'Launch'] },
     stat: { label: 'Geysers', base: 6, perLevel: 1, unit: '' },
   },
@@ -298,11 +209,6 @@ export const CARDS: AbilityCard[] = [
     rarity: 'legendary',
     description: 'A column of water erupts under your target and holds them in the air.',
     flavour: 'Something below the surface does the aiming for you.',
-    level: 1,
-    maxLevel: 5,
-    copies: 0,
-    copiesForNextLevel: 2,
-    owned: true,
     ability: { damage: 36, cooldownS: 2.6, range: 10, chargeS: 2, tags: ['Charge', 'Suspends'] },
     stat: { drives: 'damage', label: 'Spout damage', base: 36, perLevel: 6, unit: '' },
   },
@@ -313,11 +219,6 @@ export const CARDS: AbilityCard[] = [
     rarity: 'legendary',
     description: 'A whip of storm water that curves to the nearest fighter and cannot miss.',
     flavour: 'It has already decided where they are going to be.',
-    level: 1,
-    maxLevel: 5,
-    copies: 0,
-    copiesForNextLevel: 2,
-    owned: false,
     ability: { damage: 28, cooldownS: 2, range: 9, chargeS: 1.1, tags: ['Homing'] },
     stat: { drives: 'damage', label: 'Lash damage', base: 28, perLevel: 5, unit: '' },
   },
@@ -328,14 +229,6 @@ export const CARDS: AbilityCard[] = [
     rarity: 'legendary',
     description: 'A kick that sends a breaking wave down the arena, carrying whoever it catches.',
     flavour: 'The same kick everyone learns. Just, more of it.',
-    level: 1,
-    maxLevel: 5,
-    copies: 0,
-    copiesForNextLevel: 2,
-    // Owned so a deck of three legendaries is actually buildable today, not
-    // merely legal: the "no rarity rule" claim should be demonstrable, and the
-    // starting collection is the only thing that could quietly contradict it.
-    owned: true,
     ability: { damage: 32, cooldownS: 7, range: 9, chargeS: 0, tags: ['Wave', 'Carries'] },
     stat: { drives: 'range', label: 'Wave reach', base: 9, perLevel: 1, unit: 'm' },
   },
@@ -346,11 +239,6 @@ export const CARDS: AbilityCard[] = [
     rarity: 'legendary',
     description: 'A tentacle rises, grabs the nearest fighter and pulls them under for two seconds.',
     flavour: 'Whatever lives at the bottom of this pool is on your side today.',
-    level: 1,
-    maxLevel: 5,
-    copies: 0,
-    copiesForNextLevel: 2,
-    owned: false,
     ability: { damage: 24, cooldownS: 9, range: 7, chargeS: 0.5, tags: ['Grab', 'Drowns'] },
     stat: { label: 'Hold duration', base: 2, perLevel: 0.3, unit: 's' },
   },
@@ -361,11 +249,6 @@ export const CARDS: AbilityCard[] = [
     rarity: 'legendary',
     description: 'A storm takes the arena: the water churns, and everything not you is thrown.',
     flavour: 'The scoreboard stops mattering for about four seconds.',
-    level: 1,
-    maxLevel: 5,
-    copies: 0,
-    copiesForNextLevel: 1,
-    owned: true,
     ability: { damage: 48, cooldownS: 90, range: 16, chargeS: 0, tags: ['Arena-wide', 'Storm'] },
     stat: { label: 'Storm duration', base: 4, perLevel: 0.5, unit: 's' },
   },
@@ -376,19 +259,52 @@ export const CARDS: AbilityCard[] = [
     rarity: 'legendary',
     description: 'Call the thing below. It surfaces once, and takes one fighter down with it.',
     flavour: 'You only get to ask nicely the first time.',
-    level: 1,
-    maxLevel: 5,
-    copies: 0,
-    copiesForNextLevel: 1,
-    owned: false,
     ability: { damage: 55, cooldownS: 100, range: 8, chargeS: 1.5, tags: ['Single target', 'Drowns'] },
     stat: { drives: 'damage', label: 'Strike damage', base: 55, perLevel: 8, unit: '' },
   },
 ];
 
-export const CARD_BY_ID: Record<string, AbilityCard> = Object.fromEntries(
-  CARDS.map((card) => [card.id, card]),
+export const CARD_DEF_BY_ID: Record<string, CardDefinition> = Object.fromEntries(
+  CARD_CATALOG.map((card) => [card.id, card]),
 );
+
+/**
+ * What a new account starts with: one playable common in every slot, and
+ * nothing else.
+ *
+ * Enough to build a legal deck and get into a match immediately, few enough
+ * that opening the first pack is actually a discovery. Everything above this is
+ * pulled.
+ */
+export const STARTER_COLLECTION: Record<string, CardProgress> = {
+  waterJet: { level: 1, copies: 0 },
+  undertowKick: { level: 1, copies: 0 },
+  swell: { level: 1, copies: 0 },
+};
+
+/** Merges a definition with one player's progress into a renderable card. */
+export function resolveCard(
+  definition: CardDefinition,
+  progress: CardProgress | undefined,
+): AbilityCard {
+  const level = progress?.level ?? 1;
+  return {
+    ...definition,
+    level,
+    maxLevel: MAX_CARD_LEVEL,
+    copies: progress?.copies ?? 0,
+    copiesForNextLevel: copiesForNextLevel(definition.rarity, level),
+    owned: progress !== undefined,
+  };
+}
+
+/** The whole catalogue resolved against a player's progress. */
+export function resolveCollection(
+  progress: Record<string, CardProgress>,
+): { cards: AbilityCard[]; byId: Record<string, AbilityCard> } {
+  const cards = CARD_CATALOG.map((definition) => resolveCard(definition, progress[definition.id]));
+  return { cards, byId: Object.fromEntries(cards.map((card) => [card.id, card])) };
+}
 
 export const RARITY_ORDER: Rarity[] = ['common', 'rare', 'epic', 'legendary'];
 
@@ -429,8 +345,8 @@ export const SLOT_GLYPH: Record<AbilitySlot, string> = {
   ultimate: '★',
 };
 
-export function cardsForSlot(slot: AbilitySlot): AbilityCard[] {
-  return CARDS.filter((card) => card.slot === slot);
+export function cardsForSlot(cards: AbilityCard[], slot: AbilitySlot): AbilityCard[] {
+  return cards.filter((card) => card.slot === slot);
 }
 
 /** Level curve, rounded the way the UI prints it. */
@@ -464,7 +380,7 @@ export function abilityAtLevel(card: AbilityCard): AbilityCard['ability'] {
  * two different damage numbers on two different screens.
  */
 export function validateCards(): void {
-  for (const card of CARDS) {
+  for (const card of CARD_CATALOG) {
     const { drives } = card.stat;
     if (!drives) continue;
     if (card.ability[drives] !== card.stat.base) {

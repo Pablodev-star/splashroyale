@@ -9,7 +9,8 @@ import {
   type ReactNode,
 } from 'react';
 import type { AbilitySlot, Deck } from '@/types/game';
-import { DEFAULT_DECKS, MAX_DECKS, nextDeckName, sanitiseDeck } from '@/data/decks';
+import { DEFAULT_DECKS, MAX_DECKS, nextDeckName, sanitiseDeck, type CardLookup } from '@/data/decks';
+import { useCollection } from './PlayerContext';
 
 const STORAGE_KEY = 'splash-royale:decks:v1';
 
@@ -23,18 +24,18 @@ const DEFAULT_STATE: StoredState = {
   activeDeckId: DEFAULT_DECKS[0].id,
 };
 
-function load(): StoredState {
+function load(lookup: CardLookup): StoredState {
   if (typeof localStorage === 'undefined') return DEFAULT_STATE;
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return DEFAULT_STATE;
     const parsed = JSON.parse(raw) as Partial<StoredState>;
 
-    // Every saved deck is repaired against the current catalogue rather than
-    // trusted: a card that moved slot or stopped being owned would otherwise
-    // start a match with an empty ability.
+    // Every saved deck is repaired against the player's *current* collection
+    // rather than trusted: a card that moved slot, or that this account has
+    // never pulled, would otherwise start a match with an empty ability.
     const decks = (Array.isArray(parsed.decks) ? parsed.decks : [])
-      .map((deck) => (deck && typeof deck.id === 'string' ? sanitiseDeck(deck) : null))
+      .map((deck) => (deck && typeof deck.id === 'string' ? sanitiseDeck(deck, lookup) : null))
       .filter((deck): deck is Deck => deck !== null)
       .slice(0, MAX_DECKS);
     if (decks.length === 0) return DEFAULT_STATE;
@@ -70,7 +71,10 @@ const DeckContext = createContext<DeckValue | null>(null);
  * Supabase so a deck follows the account instead of the browser.
  */
 export function DeckProvider({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<StoredState>(load);
+  const { cardById } = useCollection();
+  // Repaired once, against the collection as it stands at mount. Ownership only
+  // ever grows during a session, so a deck valid at load stays valid.
+  const [state, setState] = useState<StoredState>(() => load(cardById));
 
   // Mirrors the latest state for the one operation that has to answer
   // synchronously. A `setState` updater is not guaranteed to have run by the

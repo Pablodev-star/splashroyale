@@ -29,9 +29,10 @@ const TABS: { id: TabId; label: string; glyph: string; blurb: string }[] = [
 export function SettingsScreen() {
   const { back } = useNavigation();
   const { settings, update, reset } = useSettings();
-  const { profile } = usePlayer();
+  const { profile, resetProgress } = usePlayer();
   const [tab, setTab] = useState<TabId>('profile');
   const [confirmReset, setConfirmReset] = useState(false);
+  const [confirmWipe, setConfirmWipe] = useState(false);
 
   return (
     <div className="bg-abyss relative h-full w-full overflow-hidden">
@@ -41,6 +42,9 @@ export function SettingsScreen() {
         onBack={back}
         footer={
           <>
+            <PixelButton variant="ghost" size="md" onClick={() => setConfirmWipe(true)}>
+              Wipe progress
+            </PixelButton>
             <PixelButton variant="ghost" size="md" onClick={() => setConfirmReset(true)}>
               Reset defaults
             </PixelButton>
@@ -270,6 +274,40 @@ export function SettingsScreen() {
           </div>
         </div>
       </ScreenFrame>
+
+      {/* Wiping progress is separate from resetting settings, and far louder:
+          one restores a volume slider, the other deletes a collection. */}
+      {confirmWipe && (
+        <div className="bg-abyss/85 absolute inset-0 z-30 flex items-center justify-center p-4">
+          <PixelPanel
+            title="Wipe progress"
+            variant="danger"
+            className="animate-pop-in w-full max-w-xs"
+          >
+            <p className="text-[11px] leading-snug">
+              Delete your collection and start over? Every card, every level and{' '}
+              <span className="text-gold tabular-nums">◆ {profile.gold}</span> gold go back to a new
+              account. This cannot be undone.
+            </p>
+            <div className="mt-3 flex gap-2">
+              <PixelButton variant="ghost" size="md" fullWidth onClick={() => setConfirmWipe(false)}>
+                Cancel
+              </PixelButton>
+              <PixelButton
+                variant="danger"
+                size="md"
+                fullWidth
+                onClick={() => {
+                  resetProgress();
+                  setConfirmWipe(false);
+                }}
+              >
+                Wipe
+              </PixelButton>
+            </div>
+          </PixelPanel>
+        </div>
+      )}
 
       {confirmReset && (
         <div className="bg-abyss/85 absolute inset-0 z-30 flex items-center justify-center p-4">

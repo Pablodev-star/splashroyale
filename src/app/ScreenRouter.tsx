@@ -10,6 +10,7 @@ import { MatchScreen } from '@/screens/MatchScreen';
 import { ResultScreen } from '@/screens/ResultScreen';
 import { ShopScreen } from '@/screens/ShopScreen';
 import { PackPreviewScreen } from '@/screens/PackPreviewScreen';
+import { PackOpenScreen } from '@/screens/PackOpenScreen';
 import { CollectionScreen } from '@/screens/CollectionScreen';
 import { CardDetailScreen } from '@/screens/CardDetailScreen';
 import { SettingsScreen } from '@/screens/SettingsScreen';
@@ -64,6 +65,14 @@ function renderScreen(route: Route) {
       return <ShopScreen />;
     case 'packPreview':
       return <PackPreviewScreen packId={route.params.packId} />;
+    case 'packOpen':
+      return (
+        <PackOpenScreen
+          packId={route.params.packId}
+          pulls={route.params.pulls}
+          goldFromDuplicates={route.params.goldFromDuplicates}
+        />
+      );
     case 'collection':
       return <CollectionScreen />;
     case 'cardDetail':

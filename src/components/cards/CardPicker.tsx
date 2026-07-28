@@ -9,6 +9,7 @@ import {
   cardsForSlot,
 } from '@/data/cards';
 import { canEquip } from '@/data/decks';
+import { useCollection } from '@/state/PlayerContext';
 import { GameCard } from './GameCard';
 import { PixelButton } from '@/components/ui/PixelButton';
 import { PixelBadge } from '@/components/ui/PixelBadge';
@@ -41,6 +42,7 @@ const RARITY_CHIP: Record<Rarity, string> = {
  * expressed by what you are offered, never by an error after the fact.
  */
 export function CardPicker({ slot, equippedId, onPick, onClose }: CardPickerProps) {
+  const { cards: collection } = useCollection();
   const [rarity, setRarity] = useState<RarityFilter>('all');
 
   // Escape closes it, like every other overlay in the app.
@@ -53,7 +55,7 @@ export function CardPicker({ slot, equippedId, onPick, onClose }: CardPickerProp
   }, [onClose]);
 
   const cards = useMemo(() => {
-    const all = cardsForSlot(slot).filter(
+    const all = cardsForSlot(collection, slot).filter(
       (card) => rarity === 'all' || card.rarity === rarity,
     );
     // Owned first, then rarest first: the cards you can act on are never below
@@ -64,9 +66,9 @@ export function CardPicker({ slot, equippedId, onPick, onClose }: CardPickerProp
       const byRarity = RARITY_ORDER.indexOf(b.rarity) - RARITY_ORDER.indexOf(a.rarity);
       return byRarity !== 0 ? byRarity : a.name.localeCompare(b.name);
     });
-  }, [slot, rarity]);
+  }, [collection, slot, rarity]);
 
-  const ownedCount = cardsForSlot(slot).filter((card) => canEquip(card, slot)).length;
+  const ownedCount = cardsForSlot(collection, slot).filter((card) => canEquip(card, slot)).length;
 
   return (
     // Opaque, not a scrim: at 92% the deck screen's own header and panels showed

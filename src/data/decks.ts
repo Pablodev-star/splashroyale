@@ -1,5 +1,8 @@
 import type { AbilityCard, AbilitySlot, Deck } from '@/types/game';
-import { CARDS, CARD_BY_ID, SLOT_ORDER } from './cards';
+import { SLOT_ORDER } from './cards';
+
+/** The player's resolved collection, keyed by id. */
+export type CardLookup = Record<string, AbilityCard>;
 
 /** How many decks can be saved. Enough to keep one per playstyle, not a library. */
 export const MAX_DECKS = 6;
@@ -14,18 +17,22 @@ export function canEquip(card: AbilityCard, slot: AbilitySlot, ownedOnly = true)
 }
 
 /** First usable card for a slot — the fallback when a saved deck loses a card. */
-export function defaultCardForSlot(slot: AbilitySlot, ownedOnly = true): AbilityCard | undefined {
-  return CARDS.find((card) => canEquip(card, slot, ownedOnly));
+export function defaultCardForSlot(
+  cards: CardLookup,
+  slot: AbilitySlot,
+  ownedOnly = true,
+): AbilityCard | undefined {
+  return Object.values(cards).find((card) => canEquip(card, slot, ownedOnly));
 }
 
-export function deckCards(deck: Deck): (AbilityCard | undefined)[] {
-  return SLOT_ORDER.map((slot) => CARD_BY_ID[deck.cards[slot]]);
+export function deckCards(deck: Deck, cards: CardLookup): (AbilityCard | undefined)[] {
+  return SLOT_ORDER.map((slot) => cards[deck.cards[slot]]);
 }
 
 /** A deck is complete when every slot holds a card the player can actually use. */
-export function isDeckComplete(deck: Deck): boolean {
+export function isDeckComplete(deck: Deck, cards: CardLookup): boolean {
   return SLOT_ORDER.every((slot) => {
-    const card = CARD_BY_ID[deck.cards[slot]];
+    const card = cards[deck.cards[slot]];
     return card !== undefined && canEquip(card, slot);
   });
 }
@@ -40,12 +47,12 @@ export function isDeckComplete(deck: Deck): boolean {
  * Returns `null` only when a slot has no usable card at all, which cannot happen
  * while the commons are ownable but is not worth crashing over if it does.
  */
-export function sanitiseDeck(deck: Deck, ownedOnly = true): Deck | null {
+export function sanitiseDeck(deck: Deck, lookup: CardLookup, ownedOnly = true): Deck | null {
   const cards = {} as Record<AbilitySlot, string>;
   for (const slot of SLOT_ORDER) {
-    const saved = CARD_BY_ID[deck.cards?.[slot]];
+    const saved = lookup[deck.cards?.[slot]];
     const card =
-      saved && canEquip(saved, slot, ownedOnly) ? saved : defaultCardForSlot(slot, ownedOnly);
+      saved && canEquip(saved, slot, ownedOnly) ? saved : defaultCardForSlot(lookup, slot, ownedOnly);
     if (!card) return null;
     cards[slot] = card.id;
   }
@@ -53,20 +60,18 @@ export function sanitiseDeck(deck: Deck, ownedOnly = true): Deck | null {
 }
 
 /**
- * The decks a new player starts with. One is all commons, the other all
- * legendaries: seeing both side by side is the fastest way to learn that a deck
- * is three slots and nothing else — no rarity budget, no "one legendary max".
+ * The deck a new account starts with: the three starter commons.
+ *
+ * It used to also ship an all-legendary deck, to show the no-rarity-rule at a
+ * glance. That was only honest while ownership was hand-authored — now that
+ * cards are pulled, a new player owns three commons and nothing else, and a
+ * deck referencing unowned legendaries would simply be repaired away on load.
  */
 export const DEFAULT_DECKS: Deck[] = [
   {
     id: 'starter-pool-rules',
     name: 'Pool Rules',
     cards: { attack1: 'waterJet', attack2: 'undertowKick', ultimate: 'swell' },
-  },
-  {
-    id: 'starter-deep-end',
-    name: 'Deep End',
-    cards: { attack1: 'leviathanSpout', attack2: 'tsunamiKick', ultimate: 'hurricane' },
   },
 ];
 
