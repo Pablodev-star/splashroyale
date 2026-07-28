@@ -332,6 +332,16 @@ export interface MatchOutcome {
 /* Settings                                                                   */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * Which control surface to show in a match.
+ *
+ * `auto` asks the device (see `useInputMode`) and is right almost always. The
+ * explicit values exist because "almost" is not "always": a tablet paired with
+ * a keyboard case, or a desktop with a touch monitor, is a genuine judgement
+ * call the player can make faster than any media query.
+ */
+export type ControlScheme = 'auto' | 'touch' | 'keyboard';
+
 export interface GameSettings {
   masterVolume: number;
   musicVolume: number;
@@ -341,5 +351,6 @@ export interface GameSettings {
   showMinimap: boolean;
   /** Mirrors touch controls on the opposite side for left-handed players. */
   leftHandedControls: boolean;
+  controlScheme: ControlScheme;
   playerName: string;
 }

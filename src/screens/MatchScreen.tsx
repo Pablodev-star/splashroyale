@@ -8,6 +8,9 @@ import { useWaterReactions, type WaterActor } from '@/components/water/useWaterR
 import { useSplashEvents } from '@/game/vfx';
 import { GameHud } from '@/components/hud/GameHud';
 import { TouchControls } from '@/components/hud/TouchControls';
+import { KeyboardHints } from '@/components/hud/KeyboardHints';
+import { isBound, moveAxisFor } from '@/game/input/keybinds';
+import { useInputMode } from '@/hooks/useInputMode';
 import { PixelPanel } from '@/components/ui/PixelPanel';
 import { PixelButton } from '@/components/ui/PixelButton';
 import { PixelBadge } from '@/components/ui/PixelBadge';
@@ -41,6 +44,7 @@ export function MatchScreen({ mode, mapId, roomCode }: MatchScreenProps) {
 
   const [paused, setPaused] = useState(false);
   const arenaRef = useRef<Arena3DHandle | null>(null);
+  const touch = useInputMode() === 'touch';
 
   const { snapshot, hud, cooldowns, inputRef, concede } = useMatchEngine({
     playerName: settings.playerName,
@@ -74,7 +78,12 @@ export function MatchScreen({ mode, mapId, roomCode }: MatchScreenProps) {
     if (!engineSubmerged) setSubmerged(false);
   }, [engineSubmerged]);
 
-  /** Keyboard: WASD/arrows move, Space charges, E kicks, Q ultimate, Shift dives. */
+  /**
+   * Keyboard input. Every binding comes from `KEYBINDS` rather than being
+   * spelled out here, so the caps drawn in the HUD and the codes tested below
+   * are one source — they used to be two, and only one of them was edited when
+   * a binding changed.
+   */
   const heldRef = useRef({ up: false, down: false, left: false, right: false });
   useEffect(() => {
     const applyMove = () => {
@@ -82,43 +91,34 @@ export function MatchScreen({ mode, mapId, roomCode }: MatchScreenProps) {
       inputRef.current.moveX = (held.right ? 1 : 0) - (held.left ? 1 : 0);
       inputRef.current.moveY = (held.up ? 1 : 0) - (held.down ? 1 : 0);
     };
-    const axis = (code: string): keyof typeof heldRef.current | null => {
-      if (code === 'KeyW' || code === 'ArrowUp') return 'up';
-      if (code === 'KeyS' || code === 'ArrowDown') return 'down';
-      if (code === 'KeyA' || code === 'ArrowLeft') return 'left';
-      if (code === 'KeyD' || code === 'ArrowRight') return 'right';
-      return null;
-    };
 
     const down = (event: KeyboardEvent) => {
-      const key = axis(event.code);
-      if (key) {
+      const axis = moveAxisFor(event.code);
+      if (axis) {
         event.preventDefault();
-        heldRef.current[key] = true;
+        heldRef.current[axis] = true;
         applyMove();
         return;
       }
       if (event.repeat) return;
-      if (event.code === 'Space') {
+      if (isBound('attack1', event.code)) {
         event.preventDefault();
         inputRef.current.attack1 = true;
       }
-      if (event.code === 'KeyE') inputRef.current.attack2 = true;
-      if (event.code === 'KeyQ') inputRef.current.ultimate = true;
-      if (event.code === 'ShiftLeft' || event.code === 'ShiftRight') {
-        setSubmerged((value) => !value);
-      }
-      if (event.code === 'Escape') setPaused((value) => !value);
+      if (isBound('attack2', event.code)) inputRef.current.attack2 = true;
+      if (isBound('ultimate', event.code)) inputRef.current.ultimate = true;
+      if (isBound('dive', event.code)) setSubmerged((value) => !value);
+      if (isBound('pause', event.code)) setPaused((value) => !value);
     };
 
     const up = (event: KeyboardEvent) => {
-      const key = axis(event.code);
-      if (key) {
-        heldRef.current[key] = false;
+      const axis = moveAxisFor(event.code);
+      if (axis) {
+        heldRef.current[axis] = false;
         applyMove();
         return;
       }
-      if (event.code === 'Space') inputRef.current.attack1 = false;
+      if (isBound('attack1', event.code)) inputRef.current.attack1 = false;
     };
 
     // Losing focus mid-key would otherwise leave the fighter swimming into a
@@ -228,14 +228,18 @@ export function MatchScreen({ mode, mapId, roomCode }: MatchScreenProps) {
         score={snapshot.score}
         showMinimap={settings.showMinimap}
         arenaAspect={map.size.width / map.size.depth}
+        touch={touch}
         onPause={() => setPaused(true)}
         onActivateUltimate={() => {
           inputRef.current.ultimate = true;
         }}
       />
 
-      {/* Touch layer — phones only; desktop uses the keyboard. */}
-      <div className="md:hidden">
+      {/* Touch layer. Gated on what the device can actually do, never on how
+          wide it is: a landscape tablet is wider than any phone breakpoint but
+          has no keyboard, and hiding the pads there left it with no way to
+          move at all. See `useInputMode`. */}
+      {touch && (
         <TouchControls
           submerged={hud.self.submerged}
           attackLabel={abilities.attack1?.name}
@@ -259,13 +263,10 @@ export function MatchScreen({ mode, mapId, roomCode }: MatchScreenProps) {
           }}
           onDiveToggle={() => setSubmerged((value) => !value)}
         />
-      </div>
+      )}
 
-      {/* Desktop key hints. */}
-      <div className="text-mist/50 pointer-events-none absolute bottom-2 left-1/2 hidden -translate-x-1/2 translate-y-8 text-[9px] tracking-[0.14em] uppercase md:block">
-        WASD move · drag to turn · Space {abilities.attack1?.name ?? 'attack'} · E{' '}
-        {abilities.attack2?.name ?? 'attack 2'} · Q ultimate · Shift dive · Esc pause
-      </div>
+      {/* Keyboard hints. Same gate, inverted — exactly one surface is shown. */}
+      {!touch && <KeyboardHints abilities={abilities} />}
 
       {/* Between rounds. */}
       {snapshot.intermission && (

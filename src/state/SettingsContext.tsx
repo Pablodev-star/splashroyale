@@ -19,6 +19,7 @@ export const DEFAULT_SETTINGS: GameSettings = {
   scanlines: true,
   showMinimap: true,
   leftHandedControls: false,
+  controlScheme: 'auto',
   playerName: 'Rookie',
 };
 

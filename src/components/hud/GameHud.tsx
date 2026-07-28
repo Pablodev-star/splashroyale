@@ -6,6 +6,7 @@ import { Minimap } from './Minimap';
 import { MatchTimer } from './MatchTimer';
 import { AbilityRail } from './AbilityRail';
 import { PixelIconButton } from '@/components/ui/PixelIconButton';
+import { KEYBINDS } from '@/game/input/keybinds';
 import { cn } from '@/lib/cn';
 
 export interface GameHudProps {
@@ -20,6 +21,16 @@ export interface GameHudProps {
   showMinimap?: boolean;
   /** Arena width / depth, forwarded to the minimap. */
   arenaAspect?: number;
+  /**
+   * True when the touch layer is on screen.
+   *
+   * The HUD has to know: the stick claims the bottom-left corner and the pads
+   * claim the bottom strip, so the minimap, charge meter and ultimate all move
+   * out of the way. This used to be inferred from `md:` breakpoints, which
+   * assumed "wide screen" meant "no pads" — false on a tablet, where the HUD
+   * then sat directly on top of the controls.
+   */
+  touch?: boolean;
   onPause?: () => void;
   onActivateUltimate?: () => void;
   className?: string;
@@ -37,6 +48,7 @@ export function GameHud({
   score,
   showMinimap = true,
   arenaAspect,
+  touch = false,
   onPause,
   onActivateUltimate,
   className,
@@ -66,26 +78,40 @@ export function GameHud({
         <Nameplate fighter={state.opponent} align="right" />
       </div>
 
-      {/* Bottom-left: minimap and the equipped deck. Hidden on phones, where the
-          stick lives there and the touch pads already name the abilities. */}
-      <div className="absolute bottom-3 left-3 hidden flex-col gap-2 md:flex">
-        {abilities && <AbilityRail cards={abilities} cooldowns={cooldowns} />}
-        {showMinimap && <Minimap entities={state.entities} aspect={arenaAspect} />}
-      </div>
+      {/* Bottom-left: minimap and the equipped deck — only without the touch
+          layer, whose stick sits in this exact corner and whose pads already
+          carry the ability names. */}
+      {!touch && (
+        <div className="absolute bottom-3 left-3 flex flex-col gap-2">
+          {abilities && <AbilityRail cards={abilities} cooldowns={cooldowns} showKeys />}
+          {showMinimap && <Minimap entities={state.entities} aspect={arenaAspect} />}
+        </div>
+      )}
 
-      {/* Bottom-centre: charge meter. Sits above the touch pads on phones. */}
-      <div className="absolute bottom-[184px] left-1/2 w-[78vw] -translate-x-1/2 md:bottom-3 md:w-[min(420px,60vw)]">
+      {/* Bottom-centre: charge meter, lifted above the pads when they exist. */}
+      <div
+        className={cn(
+          'absolute left-1/2 -translate-x-1/2',
+          touch ? 'bottom-[184px] w-[78vw]' : 'bottom-3 w-[min(420px,60vw)]',
+        )}
+      >
         <ChargeMeter value={state.self.charge} charging={state.self.charge > 0} />
       </div>
 
-      {/* Bottom-right: ultimate, also lifted clear of the touch pads. */}
-      <div className="pointer-events-auto absolute right-2 bottom-[184px] md:right-3 md:bottom-3">
+      {/* Bottom-right: ultimate, cleared the same way. */}
+      <div
+        className={cn(
+          'pointer-events-auto absolute',
+          touch ? 'right-2 bottom-[184px]' : 'right-3 bottom-3',
+        )}
+      >
         <UltimateIndicator
           value={state.self.ultimate}
           name={ultimateName}
           locked={state.self.submerged}
+          keyCap={touch ? undefined : KEYBINDS.ultimate.cap}
           onActivate={onActivateUltimate}
-          className="h-16 w-16 md:h-20 md:w-20"
+          className={touch ? 'h-16 w-16' : 'h-20 w-20'}
         />
       </div>
     </div>

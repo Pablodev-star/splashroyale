@@ -1,3 +1,4 @@
+import { KeyCap } from '@/components/ui/KeyCap';
 import { cn } from '@/lib/cn';
 
 export interface UltimateIndicatorProps {
@@ -7,6 +8,8 @@ export interface UltimateIndicatorProps {
   name: string;
   /** Disabled while submerged (no water attacks underwater, design doc §5). */
   locked?: boolean;
+  /** Bound key, stamped on the corner. Omitted on touch, where there is none. */
+  keyCap?: string;
   onActivate?: () => void;
   /** The caller sets the square size here (e.g. `h-16 w-16 md:h-20 md:w-20`). */
   className?: string;
@@ -20,6 +23,7 @@ export function UltimateIndicator({
   value,
   name,
   locked = false,
+  keyCap,
   onActivate,
   className,
 }: UltimateIndicatorProps) {
@@ -69,6 +73,14 @@ export function UltimateIndicator({
           aria-hidden
           className="animate-pulse-glow absolute -inset-[7px] shadow-[0_0_0_2px_var(--color-gold)]"
         />
+      )}
+
+      {/* Keycap pinned top-left: the tank is the one ability with no row in the
+          rail, so without this the keyboard binding is the only one unstated. */}
+      {keyCap && (
+        <span className="absolute top-1 left-1 z-10">
+          <KeyCap muted={!ready}>{keyCap}</KeyCap>
+        </span>
       )}
 
       <span className="relative z-10 w-full pb-1 text-center">
