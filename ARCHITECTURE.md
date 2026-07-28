@@ -22,7 +22,7 @@ rarity, pulled from **card packs** ("sobres") bought with **gold** earned in com
 | Build                                          | **Vite**                                                                                                                | `base: './'` so the static build works under the GitHub Pages sub-path.                  |
 | Rendering (menus, water backgrounds, previews) | **Canvas2D**, low-resolution offscreen buffer upscaled with `image-rendering: pixelated`                                | See `src/components/water/`.                                                             |
 | Rendering (match scene)                        | **Three.js** with billboard sprites (Block 3A)                                                                          | Camera orbits; the 2D art is reused as textures, not replaced.                            |
-| Online / backend                               | **Supabase** (Realtime channels + presence for matchmaking and rooms, Postgres for accounts, gold, inventory, missions) | GitHub Pages cannot host WebSockets, so the client talks to Supabase directly. Block 6+. |
+| Online / backend                               | **Supabase** (Realtime channels + presence for matchmaking and rooms, Postgres for accounts, gold, inventory, missions) | GitHub Pages cannot host WebSockets, so the client talks to Supabase directly. Block 9+. |
 | Hosting                                        | **GitHub Pages** (100% static)                                                                                          |                                                                                          |
 
 ### 2.1 Why Canvas2D for the water background and Three.js for the match
@@ -109,7 +109,10 @@ narrow, typed interface.
 | **3C — Controls / physics / combat** (done) | `game/engine/**`                                  | Deck from 3B, scene from 3A, splash tiers from 2C; produces `HudState`.                |
 | **4 — Progression, packs, economy** (done) | `game/progression/**`, `state/PlayerContext.tsx` | Card catalogue from 3B; feeds card levels into 3C combat.                              |
 | **5 — Maps & polish** (done)          | `game/scene/scenery.ts`, `MapPreview3D`                | Map data from Block 1; renders inside the 3A arena.                                     |
-| **6 — Online play**                   | `state/**`, Supabase                                   | Real opponents, accounts, and progression synced off-device.                            |
+| **6 — Input & platform** (done)       | `hooks/useInputMode.ts`, `game/input/keybinds.ts`, `components/ui/KeyCap.tsx` | Drives which control surface the match screen and HUD show.       |
+| **7 — Ability effects & levels** (done) | `game/scene/effects.ts`; `effect` on `data/cards.ts`; zone/wave/beam/mine/geyser state in `game/engine/**` | Cards from 3B; renders through the 3A arena.  |
+| **8 — Card & pack art** (done)        | `components/cards/CardArt.tsx`, `components/packs/PackArt.tsx` | Card catalogue from 3B, pack catalogue from Block 4.                            |
+| **9 — Online play**                   | `state/**`, Supabase                                   | Real opponents, accounts, and progression synced off-device.                            |
 
 ### 4.1 The sprite contract (Block 2A → Block 3)
 

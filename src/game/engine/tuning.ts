@@ -52,6 +52,38 @@ export const DAMAGE_SCALE = 1 / 100;
 /** Damage taken while submerged, as a share of normal. Diving is a real out. */
 export const SUBMERGED_DAMAGE_FACTOR = 0.35;
 
+/* --- Lingering effects ------------------------------------------------------ */
+
+/**
+ * How often a zone or beam may hurt the same fighter, in seconds.
+ *
+ * Damage-over-time is applied per tick rather than per frame: at 60fps a raw
+ * per-frame application would land sixty flinches a second, so the sprite never
+ * left its hit pose and the health bar fell as a smooth slide with no readable
+ * events. Ticking it means standing in poison reads as a series of hits you can
+ * count — and can decide to walk out of.
+ */
+export const DOT_TICK_S = 0.4;
+
+/** Radius, in metres, a fighter must be within to count as inside a zone. */
+export const ZONE_BODY_MARGIN = 0.3;
+
+/**
+ * Seconds a wave's crest keeps its hitbox after passing a fighter.
+ *
+ * Zero would mean the wall only connects on the exact frame its centre line
+ * crosses you, which at 12 m/s and 60fps is a 20cm window — a wave that looks
+ * like it hit you and did not. This gives the crest thickness in time as well
+ * as space.
+ */
+export const WAVE_HIT_GRACE_S = 0.12;
+
+/** Metres a skipping shot covers between bounces. */
+export const BOUNCE_INTERVAL_M = 2.6;
+
+/** Speed multiplier applied while a fighter is held by a grab (i.e. none). */
+export const HELD_SPEED = 0;
+
 /* --- Breath ---------------------------------------------------------------- */
 
 export const OXYGEN_DRAIN_PER_S = 0.13;

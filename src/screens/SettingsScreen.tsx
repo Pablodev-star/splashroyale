@@ -7,6 +7,9 @@ import { PixelSlider } from '@/components/ui/PixelSlider';
 import { PixelToggle } from '@/components/ui/PixelToggle';
 import { PixelBadge } from '@/components/ui/PixelBadge';
 import { WaterCanvas } from '@/components/water/WaterCanvas';
+import { KeyCap } from '@/components/ui/KeyCap';
+import { KEYBINDS } from '@/game/input/keybinds';
+import { useDetectedInputMode } from '@/hooks/useInputMode';
 import { useNavigation } from '@/state/NavigationContext';
 import { useSettings } from '@/state/SettingsContext';
 import { usePlayer } from '@/state/PlayerContext';
@@ -29,6 +32,9 @@ const TABS: { id: TabId; label: string; glyph: string; blurb: string }[] = [
 export function SettingsScreen() {
   const { back } = useNavigation();
   const { settings, update, reset } = useSettings();
+  // The raw detection, not the resolved mode: this screen shows the player what
+  // their device reports so "Auto" is an informed choice rather than a guess.
+  const detected = useDetectedInputMode();
   const { profile, resetProgress } = usePlayer();
   const [tab, setTab] = useState<TabId>('profile');
   const [confirmReset, setConfirmReset] = useState(false);
@@ -246,29 +252,87 @@ export function SettingsScreen() {
                   </div>
                 </PixelPanel>
 
-                <PixelPanel title="Touch layout" variant="sunken">
-                  <div
-                    className={cn(
-                      'bg-abyss pixel-bevel-inset flex h-24 items-end justify-between p-2',
-                      settings.leftHandedControls && 'flex-row-reverse',
-                    )}
-                  >
-                    <span className="bg-ocean pixel-border-thin flex h-14 w-14 items-center justify-center text-[9px] tracking-[0.12em] uppercase">
-                      Stick
-                    </span>
-                    <span className="flex gap-1.5">
-                      <span className="bg-ocean pixel-border-thin flex h-9 w-9 items-center justify-center text-[9px]">
-                        K
-                      </span>
-                      <span className="bg-surf text-abyss pixel-border-thin flex h-9 w-9 items-center justify-center text-[9px]">
-                        *
-                      </span>
-                    </span>
+                {/* Control scheme. `auto` reads the device and is right nearly
+                    always; the override exists for the cases it cannot see —
+                    a tablet with a keyboard case, a touchscreen desktop. */}
+                <PixelPanel title="Control scheme" variant="default">
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {(
+                      [
+                        ['auto', 'Auto', 'Detect'],
+                        ['touch', 'Touch', 'On-screen'],
+                        ['keyboard', 'Keyboard', 'WASD'],
+                      ] as const
+                    ).map(([value, label, hint]) => (
+                      <PixelButton
+                        key={value}
+                        size="sm"
+                        variant={settings.controlScheme === value ? 'primary' : 'secondary'}
+                        onClick={() => update('controlScheme', value)}
+                      >
+                        <span className="block leading-tight">
+                          {label}
+                          <span className="block text-[8px] opacity-70">{hint}</span>
+                        </span>
+                      </PixelButton>
+                    ))}
                   </div>
-                  <p className="text-mist/45 mt-2 text-[10px]">
-                    Keyboard in a match: hold Space to charge, S to dive, Esc to pause.
+                  <p className="text-mist/45 mt-2 text-[10px] leading-snug">
+                    Detected on this device:{' '}
+                    <span className="text-surf">
+                      {detected === 'touch' ? 'touch controls' : 'keyboard'}
+                    </span>
+                    . Auto follows this.
                   </p>
                 </PixelPanel>
+
+                {settings.controlScheme === 'touch' ||
+                (settings.controlScheme === 'auto' && detected === 'touch') ? (
+                  <PixelPanel title="Touch layout" variant="sunken">
+                    <div
+                      className={cn(
+                        'bg-abyss pixel-bevel-inset flex h-24 items-end justify-between p-2',
+                        settings.leftHandedControls && 'flex-row-reverse',
+                      )}
+                    >
+                      <span className="bg-ocean pixel-border-thin flex h-14 w-14 items-center justify-center text-[9px] tracking-[0.12em] uppercase">
+                        Stick
+                      </span>
+                      <span className="flex gap-1.5">
+                        <span className="bg-ocean pixel-border-thin flex h-9 w-9 items-center justify-center text-[9px]">
+                          K
+                        </span>
+                        <span className="bg-surf text-abyss pixel-border-thin flex h-9 w-9 items-center justify-center text-[9px]">
+                          *
+                        </span>
+                      </span>
+                    </div>
+                  </PixelPanel>
+                ) : (
+                  /* Keys are listed from `KEYBINDS`, never retyped. The line
+                     that used to sit here said "S to dive" — S is the *down*
+                     movement key, and dive has always been Shift. */
+                  <PixelPanel title="Keyboard" variant="sunken">
+                    <ul className="flex flex-col gap-1.5">
+                      {(
+                        [
+                          ['WASD', 'Move'],
+                          ['Drag', 'Turn the camera'],
+                          [KEYBINDS.attack1.cap, 'Attack 1 — hold to charge'],
+                          [KEYBINDS.attack2.cap, 'Attack 2'],
+                          [KEYBINDS.ultimate.cap, 'Ultimate'],
+                          [KEYBINDS.dive.cap, 'Dive / surface'],
+                          [KEYBINDS.pause.cap, 'Pause'],
+                        ] as const
+                      ).map(([cap, label]) => (
+                        <li key={label} className="flex items-center gap-2">
+                          <KeyCap>{cap}</KeyCap>
+                          <span className="text-mist/60 text-[10px]">{label}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </PixelPanel>
+                )}
               </>
             )}
           </div>

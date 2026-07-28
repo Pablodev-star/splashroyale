@@ -2,6 +2,7 @@ import type { CSSProperties } from 'react';
 import type { Pack, PackTier } from '@/types/game';
 import { RARITY_LABEL } from '@/data/cards';
 import { HoloSheen } from '@/components/ui/HoloSheen';
+import { PackArt } from './PackArt';
 import { cn } from '@/lib/cn';
 
 export interface Pack3DProps {
@@ -149,6 +150,34 @@ export function Pack3D({
 /* Faces                                                                      */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * Foil sparkles, as a fixed table.
+ *
+ * Deliberately not random: `Math.random()` at render time would re-scatter a
+ * pack's foil on every re-render, so a pack sitting still in the shop would
+ * twitch whenever anything above it changed state.
+ */
+const SPARKLES = [
+  { x: 18, y: 22, big: true, delay: 0, duration: 2.4 },
+  { x: 74, y: 16, big: false, delay: 0.7, duration: 2.9 },
+  { x: 42, y: 68, big: false, delay: 1.4, duration: 2.2 },
+  { x: 86, y: 52, big: true, delay: 0.3, duration: 3.1 },
+  { x: 9, y: 61, big: false, delay: 1.9, duration: 2.6 },
+  { x: 57, y: 34, big: true, delay: 1.1, duration: 2.8 },
+  { x: 30, y: 84, big: false, delay: 0.5, duration: 3.3 },
+  { x: 68, y: 79, big: true, delay: 2.2, duration: 2.5 },
+  { x: 50, y: 8, big: false, delay: 1.6, duration: 2.7 },
+  { x: 24, y: 45, big: false, delay: 2.6, duration: 3.0 },
+] as const;
+
+/** How much foil a tier gets. The ladder should be visible before the price. */
+const SPARKLE_COUNT: Record<Pack['tier'], number> = {
+  standard: 0,
+  premium: 4,
+  elite: 7,
+  mythic: 10,
+};
+
 function PackFaceFront({ pack, dim }: { pack: Pack; dim: Dimensions }) {
   const scale = dim.width / SIZES.hero.width;
   const px = (value: number) => Math.max(1, Math.round(value * scale));
@@ -177,31 +206,31 @@ function PackFaceFront({ pack, dim }: { pack: Pack; dim: Dimensions }) {
         Splash Royale
       </div>
 
-      {/* Emblem well with concentric pixel ripples behind it. */}
-      <div className="relative z-10 flex flex-1 items-center justify-center">
-        {[0, 1, 2].map((ring) => (
+      {/* The wrapper illustration. Replaces a single 72px glyph — four packs
+          that differed only in hue and character, which is a swatch, not a
+          wrapper: nothing about the Reef Pack said reef. */}
+      <div className="relative z-10 min-h-0 flex-1 overflow-hidden">
+        <PackArt pack={pack} className="h-full w-full" />
+
+        {/* Sparkle pixels over the art, denser on the better packs. Placement
+            is a fixed table rather than random so a pack does not re-scatter
+            its own foil every time React re-renders it. */}
+        {SPARKLES.slice(0, SPARKLE_COUNT[pack.tier]).map((spark, index) => (
           <span
-            key={ring}
+            key={index}
             aria-hidden
-            className="absolute"
+            className="animate-spark absolute"
             style={{
-              width: px(58 + ring * 34),
-              height: px(58 + ring * 34),
-              border: `${px(3)}px solid ${pack.art.accent}`,
-              opacity: 0.16 + (2 - ring) * 0.07,
+              left: `${spark.x}%`,
+              top: `${spark.y}%`,
+              width: px(spark.big ? 5 : 3),
+              height: px(spark.big ? 5 : 3),
+              background: pack.tier === 'mythic' ? '#ffffff' : pack.art.accent,
+              animationDelay: `${spark.delay}s`,
+              animationDuration: `${spark.duration}s`,
             }}
           />
         ))}
-        <span
-          className="relative leading-none"
-          style={{
-            color: pack.art.accent,
-            fontSize: px(72),
-            textShadow: `${px(3)}px ${px(3)}px 0 rgb(0 0 0 / 0.45)`,
-          }}
-        >
-          {pack.art.emblem}
-        </span>
       </div>
 
       {/* Name band */}

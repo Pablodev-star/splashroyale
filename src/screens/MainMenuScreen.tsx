@@ -86,15 +86,9 @@ export function MainMenuScreen() {
             >
               Play
             </PixelButton>
-            <PixelButton
-              size="md"
-              variant="secondary"
-              icon="◈"
-              fullWidth
-              onClick={() => navigate('mapSelect', { mode: 'localBots' })}
-            >
-              Quick match vs bots
-            </PixelButton>
+            {/* No "quick match vs bots" shortcut here: Play opens the mode
+                picker, whose first entry is that same match. Two buttons to one
+                destination made the menu longer and the choice less clear. */}
             <PixelButton
               size="md"
               variant="secondary"

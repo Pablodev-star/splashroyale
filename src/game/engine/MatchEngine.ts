@@ -1,22 +1,23 @@
-import type { AbilityCard, AbilitySlot } from '@/types/game';
+import type { AbilityCard, AbilityEffect, AbilitySlot } from '@/types/game';
 import type { AnimationId } from '@/game/sprites';
 import { animationDurationMs } from '@/game/sprites';
 import { MIN_SPLASH_CHARGE, splashTierFor, type SplashEvent, type SplashTier } from '@/game/vfx';
-import { abilityAtLevel } from '@/data/cards';
+import { abilityAtLevel, effectAtLevel } from '@/data/cards';
 import {
   ACCELERATION,
   ARENA,
   ARENA_MARGIN,
   BODY_RADIUS,
+  BOUNCE_INTERVAL_M,
   CHARGING_SPEED_FACTOR,
   DAMAGE_SCALE,
+  DOT_TICK_S,
   DRAG,
   OUT_OF_AIR_PENALTY,
+  HELD_SPEED,
   HIT_RADIUS,
   HIT_REACTION_S,
-  KNOCKBACK_SPEED,
   MELEE_ARC,
-  MELEE_RANGE,
   MOVE_SPEED,
   OXYGEN_DRAIN_PER_S,
   OXYGEN_REGEN_PER_S,
@@ -29,16 +30,23 @@ import {
   SUBMERGED_DAMAGE_FACTOR,
   SUBMERGED_SPEED,
   ULTIMATE_PER_DAMAGE,
+  WAVE_HIT_GRACE_S,
   WINDED_RECOVERY,
+  ZONE_BODY_MARGIN,
 } from './tuning';
 import type {
+  BeamState,
   EngineSnapshot,
   FighterId,
   FighterState,
+  GeyserState,
   Intent,
   Loadout,
+  MineState,
   ProjectileState,
   SnapshotFighter,
+  WaveState,
+  ZoneState,
 } from './types';
 
 /**
@@ -50,11 +58,19 @@ import type {
  * stepping it in a loop and reading the numbers back.
  *
  * The equipped deck (Block 3B) is the whole moveset. There is no hard-coded
- * "basic attack": what attack 1 does is whatever card sits in that slot, read
- * through `abilityAtLevel` so the damage a card advertises is the damage it
- * deals. Ability *tags* select behaviour — `Piercing` keeps a projectile alive
- * past its first hit, `Knockback` pushes, `Pull` drags, `Anti-dive` and
- * `Surfaces` reach submerged targets — so a new card is data, not code.
+ * "basic attack": what attack 1 does is whatever card sits in that slot.
+ *
+ * Behaviour comes from `card.effect`, a discriminated union the engine
+ * dispatches on (Block 7A) — so a new card is data, not code. It used to come
+ * from searching a card's display tags for words like `Radial`, which made the
+ * chips printed on a card face load-bearing and let an unrecognised chip
+ * silently do nothing.
+ *
+ * Both halves are read at the card's current level: `abilityAtLevel` for
+ * damage, range, cooldown and charge, `effectAtLevel` for everything the
+ * effect owns — a fuse, a blast radius, a hold duration, a geyser count.
+ * Reading either one raw is how a card comes to advertise a number it does
+ * not use.
  */
 
 export interface FighterConfig {
@@ -90,7 +106,16 @@ export class MatchEngine {
   private readonly options: MatchEngineOptions;
   private readonly fighters: Record<FighterId, FighterState>;
   private projectiles: ProjectileState[] = [];
+  private zones: ZoneState[] = [];
+  private waves: WaveState[] = [];
+  private beams: BeamState[] = [];
+  private mines: MineState[] = [];
+  private geysers: GeyserState[] = [];
   private splashes: SplashEvent[] = [];
+  /** Seconds since each fighter last took damage-over-time, keyed by source. */
+  private dotClocks = new Map<string, number>();
+  /** Deterministic PRNG, so geyser placement is reproducible in tests. */
+  private seed = 0x9e3779b9;
 
   private elapsedS = 0;
   private roundIndex = 0;
@@ -139,7 +164,20 @@ export class MatchEngine {
       prevAttack1: false,
       prevAttack2: false,
       prevUltimate: false,
+      heldS: 0,
+      heldUnder: false,
+      slowFactor: 1,
     };
+  }
+
+  /** xorshift32. Only used for geyser scatter; nothing balance-critical. */
+  private random(): number {
+    let x = this.seed;
+    x ^= x << 13;
+    x ^= x >>> 17;
+    x ^= x << 5;
+    this.seed = x >>> 0;
+    return this.seed / 0xffffffff;
   }
 
   private faceEachOther(): void {
@@ -173,9 +211,21 @@ export class MatchEngine {
       fighter.actionAnimation = null;
       fighter.graceS = ROUND_GRACE_S;
       fighter.winded = false;
+      fighter.heldS = 0;
+      fighter.heldUnder = false;
+      fighter.slowFactor = 1;
       fighter.cooldowns = { attack1: 0, attack2: 0, ultimate: 0 };
     }
+    // Every lingering effect dies with the round. A poison cloud that outlived
+    // the round that made it would tick against a fighter who had already
+    // respawned somewhere else.
     this.projectiles = [];
+    this.zones = [];
+    this.waves = [];
+    this.beams = [];
+    this.mines = [];
+    this.geysers = [];
+    this.dotClocks.clear();
     this.faceEachOther();
   }
 
@@ -207,6 +257,14 @@ export class MatchEngine {
     }
     this.separate();
     this.stepProjectiles(delta);
+    // Lingering effects resolve after the fighters have moved, so standing in
+    // a zone for a frame is what gets you hurt — not having been there when
+    // the tick began.
+    this.stepZones(delta);
+    this.stepWaves(delta);
+    this.stepBeams(delta);
+    this.stepMines(delta);
+    this.stepGeysers(delta);
     this.resolveRound();
   }
 
@@ -222,6 +280,30 @@ export class MatchEngine {
     }
 
     fighter.facing = intent.facing;
+
+    // --- Being held --------------------------------------------------------
+    // A grab is the only thing in the game that takes control away, so it is
+    // resolved before anything else reads the intent: while held, the intent
+    // is simply not consulted. `heldUnder` additionally pins them below the
+    // surface with the lungs still draining, which is what makes the
+    // drowning legendaries frightening rather than merely long.
+    if (fighter.heldS > 0) {
+      fighter.heldS = Math.max(0, fighter.heldS - dt);
+      fighter.vx *= HELD_SPEED;
+      fighter.vz *= HELD_SPEED;
+      if (fighter.heldUnder) {
+        fighter.submerged = true;
+        fighter.oxygen = Math.max(0, fighter.oxygen - dt * OXYGEN_DRAIN_PER_S * 2);
+      }
+      if (fighter.heldS === 0) fighter.heldUnder = false;
+      // Cooldowns and the ultimate tank still tick — being held costs you the
+      // window, not your progress.
+      if (fighter.ultimate < 1) {
+        const ultimate = abilityAtLevel(fighter.loadout.ultimate);
+        fighter.ultimate = Math.min(1, fighter.ultimate + dt / Math.max(1, ultimate.cooldownS));
+      }
+      return;
+    }
 
     // --- Breath ------------------------------------------------------------
     // Diving is a decision with a clock on it: you surface when the lungs run
@@ -250,6 +332,9 @@ export class MatchEngine {
     const throttle = length > 1 ? 1 / length : 1;
     let speed = fighter.submerged ? SUBMERGED_SPEED : MOVE_SPEED;
     if (fighter.charging) speed *= CHARGING_SPEED_FACTOR;
+    // Set by whichever zone the fighter is standing in; reset every tick by
+    // `stepZones`, so walking out restores full speed on the next frame.
+    speed *= fighter.slowFactor;
 
     const targetVx = intent.moveX * throttle * speed;
     const targetVz = intent.moveZ * throttle * speed;
@@ -311,13 +396,22 @@ export class MatchEngine {
     }
   }
 
-  /** Fires one slot. `power` scales damage — the released charge for attack 1. */
+  /**
+   * Fires one slot. `power` scales damage — the released charge for attack 1.
+   *
+   * Dispatch is on `card.effect.kind`, which is authored data. It used to be a
+   * search of the display tags for words like `Radial`, which meant the chips
+   * shown on a card face were load-bearing: renaming a chip changed what the
+   * ability did, and a chip the engine did not recognise silently did nothing.
+   */
   private use(fighter: FighterState, slot: AbilitySlot, power: number): void {
     if (fighter.cooldowns[slot] > 0) return;
     const card = fighter.loadout[slot];
     const ability = abilityAtLevel(card);
-    const tags = ability.tags;
-    const has = (tag: string) => tags.includes(tag);
+    // Levelled, like `ability`. Reading `card.effect` directly here is what
+    // made levels cosmetic for most of the catalogue: a level-5 Depth Charge
+    // advertised a 4.2m blast and detonated with the level-1 2.8m one.
+    const effect = effectAtLevel(card);
 
     fighter.cooldowns[slot] = slot === 'ultimate' ? 0 : ability.cooldownS;
     if (slot === 'ultimate') fighter.ultimate = 0;
@@ -328,42 +422,270 @@ export class MatchEngine {
 
     const damage = ability.damage * DAMAGE_SCALE * power;
     const tier = splashTierFor(slot === 'ultimate' ? 1 : power);
-    const hitsSubmerged = has('Anti-dive') || has('Surfaces') || has('Drowns') || has('Pull');
-    const knockback = has('Knockback') || has('Launch') ? KNOCKBACK_SPEED : 0;
-    const pull = has('Pull') || has('Grab');
 
-    // Radial and arena-wide abilities land everywhere at once — they are the
-    // reason ultimates read as ultimates — so they resolve immediately rather
-    // than as a travelling shot.
-    if (has('Radial') || has('Arena-wide') || has('Storm') || has('Zone')) {
-      const radius = has('Arena-wide') || has('Storm') ? ARENA * 2 : ability.range;
-      this.burst(fighter, radius, damage, { knockback, pull, hitsSubmerged, tier });
-      return;
+    switch (effect.kind) {
+      case 'projectile':
+        this.fireProjectiles(fighter, effect, ability.range, damage, tier);
+        return;
+
+      case 'melee':
+        this.melee(fighter, ability.range, damage, {
+          knockback: effect.knockback ?? 0,
+          pull: effect.pull ?? 0,
+          hitsSubmerged: effect.hitsSubmerged ?? false,
+          arc: effect.arcDeg ? (effect.arcDeg * Math.PI) / 360 : MELEE_ARC,
+          tier,
+        });
+        return;
+
+      case 'burst':
+        this.burst(fighter, ability.range, damage, {
+          knockback: effect.knockback ?? 0,
+          hitsSubmerged: effect.hitsSubmerged ?? false,
+          tier,
+        });
+        return;
+
+      case 'zone':
+        this.spawnZone(fighter, effect, ability.range, tier);
+        return;
+
+      case 'wave':
+        this.spawnWave(fighter, effect, damage, tier);
+        return;
+
+      case 'beam':
+        this.spawnBeam(fighter, effect, ability.range, damage);
+        return;
+
+      case 'mine':
+        this.spawnMine(fighter, effect, ability.range, damage);
+        return;
+
+      case 'geysers':
+        this.spawnGeysers(fighter, effect, damage);
+        return;
+
+      case 'grab':
+        this.grab(fighter, effect, ability.range, damage, tier);
+        return;
     }
+  }
 
-    if (ability.range <= MELEE_RANGE) {
-      this.melee(fighter, ability.range, damage, { knockback, pull, hitsSubmerged, tier });
-      return;
+  /* --- Spawning ----------------------------------------------------------- */
+
+  private fireProjectiles(
+    fighter: FighterState,
+    effect: Extract<AbilityEffect, { kind: 'projectile' }>,
+    range: number,
+    damage: number,
+    tier: SplashTier,
+  ): void {
+    const shots = Math.max(1, effect.shots ?? 1);
+    const spread = ((effect.spreadDeg ?? 0) * Math.PI) / 180;
+    const speed = effect.speed ?? PROJECTILE_SPEED;
+
+    for (let index = 0; index < shots; index += 1) {
+      // Fan symmetrically about the aim: a single shot gets no offset, three
+      // get -spread/2, 0, +spread/2.
+      const offset = shots === 1 ? 0 : (index / (shots - 1) - 0.5) * spread;
+      const angle = fighter.facing + offset;
+      this.projectiles.push({
+        id: `p${this.nextId++}`,
+        owner: fighter.id,
+        // Spawned a body-radius ahead so it never starts inside its own owner.
+        x: fighter.x + Math.cos(angle) * BODY_RADIUS,
+        z: fighter.z + Math.sin(angle) * BODY_RADIUS,
+        vx: Math.cos(angle) * speed,
+        vz: Math.sin(angle) * speed,
+        rangeLeft: range,
+        // A volley splits its damage: three streams that each hit for the full
+        // card number would make the epic strictly triple a common.
+        damage: damage / shots,
+        piercing: effect.pierce ?? false,
+        homing: effect.homing ?? false,
+        hitsSubmerged: false,
+        knockback: effect.knockback ?? 0,
+        pull: false,
+        tier,
+        hits: [],
+        bounces: effect.bounces ?? 0,
+        bounceEveryM: BOUNCE_INTERVAL_M,
+        sinceBounceM: 0,
+      });
     }
+  }
 
-    this.projectiles.push({
-      id: `p${this.nextId++}`,
+  private spawnZone(
+    fighter: FighterState,
+    effect: Extract<AbilityEffect, { kind: 'zone' }>,
+    range: number,
+    tier: SplashTier,
+  ): void {
+    // Dropped at the caster's feet, or thrown out to the end of their aim.
+    const distance = effect.atSelf ? 0 : range;
+    const x = clamp(fighter.x + Math.cos(fighter.facing) * distance, 0, ARENA);
+    const z = clamp(fighter.z + Math.sin(fighter.facing) * distance, 0, ARENA);
+
+    this.zones.push({
+      id: `z${this.nextId++}`,
       owner: fighter.id,
-      // Spawned a body-radius ahead so it never starts inside its own owner.
-      x: fighter.x + Math.cos(fighter.facing) * BODY_RADIUS,
-      z: fighter.z + Math.sin(fighter.facing) * BODY_RADIUS,
-      vx: Math.cos(fighter.facing) * PROJECTILE_SPEED,
-      vz: Math.sin(fighter.facing) * PROJECTILE_SPEED,
-      rangeLeft: ability.range,
+      flavour: effect.flavour,
+      x,
+      z,
+      // The card's `range` is how far it is thrown; the puddle itself is sized
+      // from the same number so a longer-ranged cloud is also a wider one.
+      radius: effect.radius,
+      remainingS: effect.durationS,
+      totalS: effect.durationS,
+      dps: effect.dps * DAMAGE_SCALE,
+      pullSpeed: effect.pullSpeed ?? 0,
+      slow: effect.slow ?? 1,
+      hitsSubmerged: effect.hitsSubmerged ?? false,
+    });
+    this.emitSplash(x, z, tier);
+  }
+
+  private spawnWave(
+    fighter: FighterState,
+    effect: Extract<AbilityEffect, { kind: 'wave' }>,
+    damage: number,
+    tier: SplashTier,
+  ): void {
+    this.waves.push({
+      id: `w${this.nextId++}`,
+      owner: fighter.id,
+      originX: fighter.x,
+      originZ: fighter.z,
+      dirX: Math.cos(fighter.facing),
+      dirZ: Math.sin(fighter.facing),
+      travelled: 0,
+      travel: effect.travel,
+      speed: effect.speed,
+      width: effect.width,
       damage,
-      piercing: has('Piercing'),
-      homing: has('Homing'),
-      hitsSubmerged,
-      knockback,
-      pull,
-      tier,
+      carrySpeed: effect.carrySpeed,
       hits: [],
     });
+    this.emitSplash(fighter.x, fighter.z, tier);
+  }
+
+  private spawnBeam(
+    fighter: FighterState,
+    effect: Extract<AbilityEffect, { kind: 'beam' }>,
+    range: number,
+    damage: number,
+  ): void {
+    // Damage is authored as the total over the whole beam, divided across its
+    // ticks — otherwise a two-second beam ticking every 0.2s would deal ten
+    // times its card number.
+    const ticks = Math.max(1, Math.round(effect.durationS / effect.tickS));
+    this.beams.push({
+      id: `b${this.nextId++}`,
+      owner: fighter.id,
+      angle: fighter.facing,
+      length: range,
+      width: effect.width,
+      remainingS: effect.durationS,
+      totalS: effect.durationS,
+      tickS: effect.tickS,
+      sinceTickS: effect.tickS, // Fire on the first frame, not after a delay.
+      damagePerTick: damage / ticks,
+    });
+  }
+
+  private spawnMine(
+    fighter: FighterState,
+    effect: Extract<AbilityEffect, { kind: 'mine' }>,
+    range: number,
+    damage: number,
+  ): void {
+    const x = clamp(fighter.x + Math.cos(fighter.facing) * range, 0, ARENA);
+    const z = clamp(fighter.z + Math.sin(fighter.facing) * range, 0, ARENA);
+    this.mines.push({
+      id: `m${this.nextId++}`,
+      owner: fighter.id,
+      x,
+      z,
+      fuseS: effect.fuseS,
+      totalFuseS: effect.fuseS,
+      radius: effect.radius,
+      damage,
+      hitsSubmerged: effect.hitsSubmerged ?? false,
+      submergedBonus: effect.submergedBonus ?? 1,
+    });
+  }
+
+  private spawnGeysers(
+    fighter: FighterState,
+    effect: Extract<AbilityEffect, { kind: 'geysers' }>,
+    damage: number,
+  ): void {
+    const target = this.enemyOf(fighter.id);
+    for (let index = 0; index < effect.count; index += 1) {
+      // The first one is aimed at the enemy and the rest scatter: entirely
+      // random placement made the ultimate a lottery, and all-aimed made it
+      // undodgeable. One guaranteed threat plus noise is the intended "you
+      // can dodge most of them".
+      const aimed = index === 0;
+      const x = aimed
+        ? target.x
+        : ARENA_MARGIN + this.random() * (ARENA - ARENA_MARGIN * 2);
+      const z = aimed
+        ? target.z
+        : ARENA_MARGIN + this.random() * (ARENA - ARENA_MARGIN * 2);
+      this.geysers.push({
+        id: `g${this.nextId++}`,
+        owner: fighter.id,
+        x,
+        z,
+        radius: effect.radius,
+        // Staggered so they erupt as a sequence you can run through rather
+        // than one instant that either catches you or does not.
+        warnS: effect.warnS + index * 0.28,
+        totalWarnS: effect.warnS + index * 0.28,
+        eruptS: 0.45,
+        damage: damage / effect.count,
+        knockback: effect.knockback ?? 0,
+        fired: false,
+      });
+    }
+  }
+
+  private grab(
+    fighter: FighterState,
+    effect: Extract<AbilityEffect, { kind: 'grab' }>,
+    range: number,
+    damage: number,
+    tier: SplashTier,
+  ): void {
+    const target = this.enemyOf(fighter.id);
+    const dx = target.x - fighter.x;
+    const dz = target.z - fighter.z;
+    const distance = Math.hypot(dx, dz);
+    this.emitSplash(target.x, target.z, tier);
+    if (distance > range) return;
+
+    // A grab reaches under water — being submerged is exactly what these are
+    // the answer to.
+    this.damage(fighter, target, damage, {
+      knockback: 0,
+      pull: false,
+      hitsSubmerged: true,
+    });
+    if (target.health <= 0) return;
+
+    target.heldS = effect.holdS;
+    target.heldUnder = effect.drowns ?? false;
+    if (effect.pullToSelf) {
+      // Reeled to just outside body contact, not on top of the caster.
+      const safe = Math.max(0.001, distance);
+      const stop = BODY_RADIUS * 2.2;
+      target.x = fighter.x + (dx / safe) * stop;
+      target.z = fighter.z + (dz / safe) * stop;
+      target.vx = 0;
+      target.vz = 0;
+    }
   }
 
   private enemyOf(id: FighterId): FighterState {
@@ -374,7 +696,13 @@ export class MatchEngine {
     fighter: FighterState,
     range: number,
     damage: number,
-    opts: { knockback: number; pull: boolean; hitsSubmerged: boolean; tier: SplashTier },
+    opts: {
+      knockback: number;
+      pull: number;
+      hitsSubmerged: boolean;
+      arc: number;
+      tier: SplashTier;
+    },
   ): void {
     const target = this.enemyOf(fighter.id);
     const dx = target.x - fighter.x;
@@ -388,21 +716,30 @@ export class MatchEngine {
 
     if (distance > range + BODY_RADIUS) return;
     const angle = Math.abs(wrap(Math.atan2(dz, dx) - fighter.facing));
-    if (angle > MELEE_ARC) return;
-    this.damage(fighter, target, damage, opts);
+    if (angle > opts.arc) return;
+    this.damage(fighter, target, damage, {
+      knockback: opts.knockback,
+      pull: opts.pull > 0,
+      pullSpeed: opts.pull,
+      hitsSubmerged: opts.hitsSubmerged,
+    });
   }
 
   private burst(
     fighter: FighterState,
     radius: number,
     damage: number,
-    opts: { knockback: number; pull: boolean; hitsSubmerged: boolean; tier: SplashTier },
+    opts: { knockback: number; hitsSubmerged: boolean; tier: SplashTier },
   ): void {
     this.emitSplash(fighter.x, fighter.z, opts.tier);
     const target = this.enemyOf(fighter.id);
     const distance = Math.hypot(target.x - fighter.x, target.z - fighter.z);
     if (distance > radius) return;
-    this.damage(fighter, target, damage, opts);
+    this.damage(fighter, target, damage, {
+      knockback: opts.knockback,
+      pull: false,
+      hitsSubmerged: opts.hitsSubmerged,
+    });
     this.emitSplash(target.x, target.z, opts.tier);
   }
 
@@ -410,24 +747,40 @@ export class MatchEngine {
     source: FighterState,
     target: FighterState,
     amount: number,
-    opts: { knockback: number; pull: boolean; hitsSubmerged: boolean },
+    opts: {
+      knockback: number;
+      pull: boolean;
+      /** Overrides the default pull impulse; used by melee's `pull` metres/s. */
+      pullSpeed?: number;
+      hitsSubmerged: boolean;
+      /** Damage-over-time: no flinch, no charge interrupt. See `stepZones`. */
+      overTime?: boolean;
+    },
   ): void {
     if (target.graceS > 0) return;
     if (target.submerged && !opts.hitsSubmerged) return;
 
     const scaled = target.submerged ? amount * SUBMERGED_DAMAGE_FACTOR : amount;
     target.health = Math.max(0, target.health - scaled);
-    target.hitS = HIT_REACTION_S;
-    // A hit interrupts a charge. Otherwise trading blows while holding a full
-    // charge is strictly better than reacting.
-    target.charging = false;
-    target.charge = 0;
+
+    // Damage-over-time deliberately does neither of the next two things. A
+    // poison cloud that re-triggered the flinch on every tick would freeze the
+    // sprite in its hit pose for as long as you stood in it, and one that
+    // wiped the charge every tick would make charging inside a cloud outright
+    // impossible rather than merely a bad idea.
+    if (!opts.overTime) {
+      target.hitS = HIT_REACTION_S;
+      // A hit interrupts a charge. Otherwise trading blows while holding a
+      // full charge is strictly better than reacting.
+      target.charging = false;
+      target.charge = 0;
+    }
 
     if (opts.knockback > 0 || opts.pull) {
       const dx = target.x - source.x;
       const dz = target.z - source.z;
       const distance = Math.max(0.001, Math.hypot(dx, dz));
-      const speed = opts.pull ? -PULL_SPEED : opts.knockback;
+      const speed = opts.pull ? -(opts.pullSpeed ?? PULL_SPEED) : opts.knockback;
       target.vx += (dx / distance) * speed;
       target.vz += (dz / distance) * speed;
     }
@@ -463,7 +816,21 @@ export class MatchEngine {
       const stepZ = projectile.vz * dt;
       projectile.x += stepX;
       projectile.z += stepZ;
-      projectile.rangeLeft -= Math.hypot(stepX, stepZ);
+      const stepped = Math.hypot(stepX, stepZ);
+      projectile.rangeLeft -= stepped;
+
+      // A skipping shot re-arms on each bounce off the surface: clearing the
+      // hit list is what lets one shot catch the same fighter on two separate
+      // skims, which is the reason to aim at the water instead of at them.
+      if (projectile.bounces > 0) {
+        projectile.sinceBounceM += stepped;
+        if (projectile.sinceBounceM >= projectile.bounceEveryM) {
+          projectile.sinceBounceM -= projectile.bounceEveryM;
+          projectile.bounces -= 1;
+          projectile.hits = [];
+          this.emitSplash(projectile.x, projectile.z, 2);
+        }
+      }
 
       const owner = this.fighters[projectile.owner];
       const distance = Math.hypot(target.x - projectile.x, target.z - projectile.z);
@@ -494,6 +861,210 @@ export class MatchEngine {
     }
 
     this.projectiles = alive;
+  }
+
+  /* --- Lingering effects --------------------------------------------------- */
+
+  /**
+   * Applies damage-over-time on a fixed clock rather than per frame.
+   *
+   * Returns true when a tick was due. The key is per source *and* per target so
+   * two overlapping clouds hurt independently, and so leaving and re-entering
+   * one cloud does not reset another's timer.
+   */
+  private dotDue(key: string, dt: number): boolean {
+    const elapsed = (this.dotClocks.get(key) ?? DOT_TICK_S) + dt;
+    if (elapsed < DOT_TICK_S) {
+      this.dotClocks.set(key, elapsed);
+      return false;
+    }
+    this.dotClocks.set(key, elapsed - DOT_TICK_S);
+    return true;
+  }
+
+  private stepZones(dt: number): void {
+    // Cleared and re-applied every tick, so walking out of a cloud restores
+    // full speed on the very next frame without any bookkeeping.
+    for (const id of ['self', 'opponent'] as const) this.fighters[id].slowFactor = 1;
+
+    const alive: ZoneState[] = [];
+    for (const zone of this.zones) {
+      zone.remainingS -= dt;
+      if (zone.remainingS <= 0) {
+        this.dotClocks.delete(`${zone.id}:self`);
+        this.dotClocks.delete(`${zone.id}:opponent`);
+        continue;
+      }
+      alive.push(zone);
+
+      const target = this.enemyOf(zone.owner);
+      const owner = this.fighters[zone.owner];
+      const dx = target.x - zone.x;
+      const dz = target.z - zone.z;
+      const distance = Math.hypot(dx, dz);
+      if (distance > zone.radius + ZONE_BODY_MARGIN) {
+        this.dotClocks.delete(`${zone.id}:${target.id}`);
+        continue;
+      }
+      if (target.submerged && !zone.hitsSubmerged) continue;
+
+      if (zone.slow < 1) target.slowFactor = Math.min(target.slowFactor, zone.slow);
+
+      // A whirlpool drags continuously rather than as an impulse: it is a
+      // current, and a one-off shove would let a fighter simply out-accelerate
+      // it on the next frame.
+      if (zone.pullSpeed > 0 && distance > 0.05) {
+        target.vx -= (dx / distance) * zone.pullSpeed * dt;
+        target.vz -= (dz / distance) * zone.pullSpeed * dt;
+      }
+
+      if (zone.dps > 0 && this.dotDue(`${zone.id}:${target.id}`, dt)) {
+        this.damage(owner, target, zone.dps * DOT_TICK_S, {
+          knockback: 0,
+          pull: false,
+          hitsSubmerged: zone.hitsSubmerged,
+          overTime: true,
+        });
+        this.emitSplash(target.x, target.z, 1);
+      }
+    }
+    this.zones = alive;
+  }
+
+  private stepWaves(dt: number): void {
+    const alive: WaveState[] = [];
+    for (const wave of this.waves) {
+      wave.travelled += wave.speed * dt;
+      if (wave.travelled >= wave.travel) continue;
+      alive.push(wave);
+
+      const target = this.enemyOf(wave.owner);
+      if (wave.hits.includes(target.id)) continue;
+      // Diving is the counter. The wall passes overhead, which is what keeps
+      // an arena-crossing attack fair rather than merely unavoidable.
+      if (target.submerged) continue;
+
+      // Distance along the wave's travel axis, and perpendicular to it.
+      const rx = target.x - wave.originX;
+      const rz = target.z - wave.originZ;
+      const along = rx * wave.dirX + rz * wave.dirZ;
+      const across = Math.abs(rx * -wave.dirZ + rz * wave.dirX);
+      if (across > wave.width) continue;
+
+      // The crest has thickness in time as well as space: without the grace
+      // window a 12 m/s wall only connects on the frame its centre line is
+      // within 20cm of you.
+      const crestGap = Math.abs(along - wave.travelled);
+      if (crestGap > wave.speed * WAVE_HIT_GRACE_S + BODY_RADIUS) continue;
+
+      const owner = this.fighters[wave.owner];
+      this.damage(owner, target, wave.damage, {
+        knockback: 0,
+        pull: false,
+        hitsSubmerged: false,
+      });
+      // Carried along the wave's direction, not away from its caster: being
+      // swept is the signature of the effect.
+      target.vx += wave.dirX * wave.carrySpeed;
+      target.vz += wave.dirZ * wave.carrySpeed;
+      wave.hits.push(target.id);
+      this.emitSplash(target.x, target.z, 4);
+    }
+    this.waves = alive;
+  }
+
+  private stepBeams(dt: number): void {
+    const alive: BeamState[] = [];
+    for (const beam of this.beams) {
+      beam.remainingS -= dt;
+      if (beam.remainingS <= 0) continue;
+      alive.push(beam);
+
+      beam.sinceTickS += dt;
+      if (beam.sinceTickS < beam.tickS) continue;
+      beam.sinceTickS -= beam.tickS;
+
+      const owner = this.fighters[beam.owner];
+      const target = this.enemyOf(beam.owner);
+      if (target.submerged) continue;
+
+      const rx = target.x - owner.x;
+      const rz = target.z - owner.z;
+      const along = rx * Math.cos(beam.angle) + rz * Math.sin(beam.angle);
+      const across = Math.abs(rx * -Math.sin(beam.angle) + rz * Math.cos(beam.angle));
+      if (along < 0 || along > beam.length || across > beam.width) continue;
+
+      this.damage(owner, target, beam.damagePerTick, {
+        knockback: 0,
+        pull: false,
+        hitsSubmerged: false,
+        // Ticks fast enough that flinching on each would lock the sprite.
+        overTime: true,
+      });
+      this.emitSplash(target.x, target.z, 2);
+    }
+    this.beams = alive;
+  }
+
+  private stepMines(dt: number): void {
+    const alive: MineState[] = [];
+    for (const mine of this.mines) {
+      mine.fuseS -= dt;
+      if (mine.fuseS > 0) {
+        alive.push(mine);
+        continue;
+      }
+
+      // Detonation.
+      const owner = this.fighters[mine.owner];
+      const target = this.enemyOf(mine.owner);
+      const distance = Math.hypot(target.x - mine.x, target.z - mine.z);
+      this.emitSplash(mine.x, mine.z, 4);
+      if (distance > mine.radius) continue;
+      if (target.submerged && !mine.hitsSubmerged) continue;
+
+      // The anti-dive charge is the one thing in the game that hits *harder*
+      // under water — otherwise diving would counter every delayed effect.
+      const multiplier = target.submerged ? mine.submergedBonus : 1;
+      this.damage(owner, target, mine.damage * multiplier, {
+        knockback: 0,
+        pull: false,
+        hitsSubmerged: mine.hitsSubmerged,
+      });
+    }
+    this.mines = alive;
+  }
+
+  private stepGeysers(dt: number): void {
+    const alive: GeyserState[] = [];
+    for (const geyser of this.geysers) {
+      if (!geyser.fired) {
+        geyser.warnS -= dt;
+        if (geyser.warnS > 0) {
+          alive.push(geyser);
+          continue;
+        }
+        geyser.fired = true;
+        this.emitSplash(geyser.x, geyser.z, 3);
+
+        const owner = this.fighters[geyser.owner];
+        const target = this.enemyOf(geyser.owner);
+        const distance = Math.hypot(target.x - geyser.x, target.z - geyser.z);
+        if (distance <= geyser.radius && !target.submerged) {
+          this.damage(owner, target, geyser.damage, {
+            knockback: geyser.knockback,
+            pull: false,
+            hitsSubmerged: false,
+          });
+        }
+      }
+
+      // The column lingers briefly after firing, purely so the player sees
+      // what hit them.
+      geyser.eruptS -= dt;
+      if (geyser.eruptS > 0) alive.push(geyser);
+    }
+    this.geysers = alive;
   }
 
   /** Keeps two bodies from occupying the same water. */
@@ -593,6 +1164,53 @@ export class MatchEngine {
         id: p.id,
         x: p.x / ARENA,
         y: p.z / ARENA,
+      })),
+      // `mine` lets the renderer tint an effect by whose it is without the
+      // scene needing to know what a FighterId means.
+      zones: this.zones.map((z) => ({
+        id: z.id,
+        flavour: z.flavour,
+        x: z.x / ARENA,
+        y: z.z / ARENA,
+        radius: z.radius / ARENA,
+        progress: 1 - z.remainingS / z.totalS,
+        mine: z.owner === 'self',
+      })),
+      waves: this.waves.map((w) => ({
+        id: w.id,
+        x: (w.originX + w.dirX * w.travelled) / ARENA,
+        y: (w.originZ + w.dirZ * w.travelled) / ARENA,
+        angle: Math.atan2(w.dirZ, w.dirX),
+        width: w.width / ARENA,
+        progress: w.travelled / w.travel,
+        mine: w.owner === 'self',
+      })),
+      beams: this.beams.map((b) => ({
+        id: b.id,
+        x: this.fighters[b.owner].x / ARENA,
+        y: this.fighters[b.owner].z / ARENA,
+        angle: b.angle,
+        length: b.length / ARENA,
+        width: b.width / ARENA,
+        progress: 1 - b.remainingS / b.totalS,
+        mine: b.owner === 'self',
+      })),
+      mines: this.mines.map((m) => ({
+        id: m.id,
+        x: m.x / ARENA,
+        y: m.z / ARENA,
+        radius: m.radius / ARENA,
+        progress: 1 - m.fuseS / m.totalFuseS,
+        mine: m.owner === 'self',
+      })),
+      geysers: this.geysers.map((g) => ({
+        id: g.id,
+        x: g.x / ARENA,
+        y: g.z / ARENA,
+        radius: g.radius / ARENA,
+        erupting: g.fired,
+        progress: g.fired ? 1 - g.eruptS / 0.45 : 1 - g.warnS / g.totalWarnS,
+        mine: g.owner === 'self',
       })),
       splashes: this.splashes,
       timeRemainingMs: Math.max(0, this.options.durationMs - this.elapsedS * 1000),

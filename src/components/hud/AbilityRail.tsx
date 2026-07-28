@@ -1,5 +1,8 @@
 import type { AbilityCard, AbilitySlot, Rarity } from '@/types/game';
-import { SLOT_GLYPH, SLOT_LABEL, SLOT_ORDER } from '@/data/cards';
+import { SLOT_LABEL, SLOT_ORDER } from '@/data/cards';
+import { SLOT_CAP } from '@/game/input/keybinds';
+import { KeyCap } from '@/components/ui/KeyCap';
+import { CardArt } from '@/components/cards/CardArt';
 import { cn } from '@/lib/cn';
 
 export interface AbilityRailProps {
@@ -7,6 +10,8 @@ export interface AbilityRailProps {
   cards: Partial<Record<AbilitySlot, AbilityCard>>;
   /** Seconds left per slot, from the engine. Omitted outside a live match. */
   cooldowns?: Partial<Record<AbilitySlot, number>>;
+  /** Stamps the bound key on each row. Off on touch, where there is no key. */
+  showKeys?: boolean;
   className?: string;
 }
 
@@ -28,7 +33,12 @@ const ACCENT: Record<Rarity, string> = {
  * number: what a player needs mid-fight is "can I press this yet", read at a
  * glance, not a countdown to two decimal places.
  */
-export function AbilityRail({ cards, cooldowns, className }: AbilityRailProps) {
+export function AbilityRail({
+  cards,
+  cooldowns,
+  showKeys = false,
+  className,
+}: AbilityRailProps) {
   return (
     <ul className={cn('flex flex-col gap-1', className)}>
       {SLOT_ORDER.map((slot) => {
@@ -52,14 +62,23 @@ export function AbilityRail({ cards, cooldowns, className }: AbilityRailProps) {
                 style={{ width: `${Math.min(100, (remaining / total) * 100)}%` }}
               />
             )}
-            <span
-              className={cn(
-                'relative w-3 text-center text-[11px] leading-none',
-                cooling ? 'text-mist/30' : 'text-surf',
-              )}
-            >
-              {SLOT_GLYPH[slot]}
-            </span>
+            {showKeys ? (
+              <KeyCap muted={cooling} className="relative">
+                {SLOT_CAP[slot]}
+              </KeyCap>
+            ) : (
+              // The card's own picture, not the slot's glyph: on touch this row
+              // is the only place the equipped ability is named, and three
+              // identical `≈` told you nothing about which one you had.
+              <span
+                className={cn(
+                  'relative block h-3.5 w-3.5 shrink-0',
+                  cooling ? 'text-mist/30' : 'text-surf',
+                )}
+              >
+                <CardArt card={card} />
+              </span>
+            )}
             <span className="relative min-w-0">
               <span className="text-mist/40 block text-[7px] tracking-[0.16em] uppercase">
                 {SLOT_LABEL[slot]}
