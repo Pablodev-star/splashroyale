@@ -1,21 +1,30 @@
 import { useMemo, useState } from 'react';
-import type { AbilityCard, CardKind, Rarity } from '@/types/game';
-import { CARDS, CARD_KIND_LABEL, RARITY_LABEL, RARITY_ORDER } from '@/data/cards';
+import type { AbilityCard, AbilitySlot, Rarity } from '@/types/game';
+import {
+  CARDS,
+  RARITY_LABEL,
+  RARITY_ORDER,
+  SLOT_GLYPH,
+  SLOT_LABEL,
+  SLOT_ORDER,
+} from '@/data/cards';
 import { ScreenFrame } from '@/components/ui/ScreenFrame';
 import { GameCard } from '@/components/cards/GameCard';
 import { PixelBadge } from '@/components/ui/PixelBadge';
+import { PixelButton } from '@/components/ui/PixelButton';
 import { useNavigation } from '@/state/NavigationContext';
 import { cn } from '@/lib/cn';
 
 type RarityFilter = 'all' | Rarity;
-type KindFilter = 'all' | CardKind;
+type SlotFilter = 'all' | AbilitySlot;
 
-const KIND_FILTERS: { id: KindFilter; label: string; glyph: string }[] = [
-  { id: 'all', label: 'All types', glyph: '◇' },
-  { id: 'attack', label: 'Attack', glyph: '≈' },
-  { id: 'defense', label: 'Defense', glyph: '◈' },
-  { id: 'utility', label: 'Utility', glyph: '✦' },
-  { id: 'ultimate', label: 'Ultimate', glyph: '★' },
+const SLOT_FILTERS: { id: SlotFilter; label: string; glyph: string }[] = [
+  { id: 'all', label: 'All slots', glyph: '◇' },
+  ...SLOT_ORDER.map((slot) => ({
+    id: slot as SlotFilter,
+    label: SLOT_LABEL[slot],
+    glyph: SLOT_GLYPH[slot],
+  })),
 ];
 
 const RARITY_CHIP: Record<Rarity, string> = {
@@ -38,17 +47,17 @@ function sortCards(cards: AbilityCard[]): AbilityCard[] {
 export function CollectionScreen() {
   const { navigate, back } = useNavigation();
   const [rarity, setRarity] = useState<RarityFilter>('all');
-  const [kind, setKind] = useState<KindFilter>('all');
+  const [slot, setSlot] = useState<SlotFilter>('all');
 
   const cards = useMemo(
     () =>
       sortCards(
         CARDS.filter(
           (card) =>
-            (rarity === 'all' || card.rarity === rarity) && (kind === 'all' || card.kind === kind),
+            (rarity === 'all' || card.rarity === rarity) && (slot === 'all' || card.slot === slot),
         ),
       ),
-    [rarity, kind],
+    [rarity, slot],
   );
 
   const owned = CARDS.filter((card) => card.owned).length;
@@ -68,12 +77,22 @@ export function CollectionScreen() {
     <div className="bg-abyss relative h-full w-full overflow-hidden">
       <ScreenFrame
         title="Collection"
-        subtitle="Every card you own is an ability you can equip"
+        subtitle="Every card is a move — equip three of them as your deck"
         onBack={back}
         aside={
-          <PixelBadge tone="surf">
-            {owned}/{CARDS.length} · {Math.round(completion * 100)}%
-          </PixelBadge>
+          <>
+            <PixelButton
+              variant="secondary"
+              size="sm"
+              icon="≈"
+              onClick={() => navigate('deckSelect', { next: null })}
+            >
+              Deck
+            </PixelButton>
+            <PixelBadge tone="surf">
+              {owned}/{CARDS.length} · {Math.round(completion * 100)}%
+            </PixelBadge>
+          </>
         }
       >
         {/* Per-rarity completion strip. */}
@@ -107,15 +126,16 @@ export function CollectionScreen() {
           ))}
         </div>
 
-        {/* Type filter. */}
+        {/* Slot filter — the same three slots a deck has, so browsing the
+            collection and filling a deck ask the same question. */}
         <div className="mb-4 flex flex-wrap gap-1.5">
-          {KIND_FILTERS.map((option) => {
-            const active = kind === option.id;
+          {SLOT_FILTERS.map((option) => {
+            const active = slot === option.id;
             return (
               <button
                 key={option.id}
                 type="button"
-                onClick={() => setKind(option.id)}
+                onClick={() => setSlot(option.id)}
                 aria-pressed={active}
                 className={cn(
                   'flex items-center gap-1.5 px-3 py-2 text-[10px] font-bold tracking-[0.12em] uppercase',
@@ -158,8 +178,7 @@ export function CollectionScreen() {
 
         {cards.length === 0 && (
           <p className="text-mist/50 py-16 text-center text-[11px] tracking-[0.12em] uppercase">
-            No {kind === 'all' ? '' : `${CARD_KIND_LABEL[kind as CardKind]} `}cards match this
-            filter.
+            No {slot === 'all' ? '' : `${SLOT_LABEL[slot as AbilitySlot]} `}cards match this filter.
           </p>
         )}
       </ScreenFrame>

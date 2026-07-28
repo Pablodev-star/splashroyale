@@ -103,7 +103,7 @@ narrow, typed interface.
 | **2B — Water & reactive environment** (done) | `components/water/**`                           | Map palettes from `data/maps.ts`; actor positions from the arena.                        |
 | **2C — Splash animations** (done)     | `game/vfx/**`                                          | Charge value from Block 3, ripple API from 2B.                                          |
 | **3A — 3D arena** (done)              | `game/scene/**`                                        | Sprite atlas from 2A, water renderer from 2B, splash tiers from 2C.                     |
-| **3B — Cards as abilities / decks**   | `data/cards.ts`, deck screens                          | Equipped deck feeds the match.                                                          |
+| **3B — Cards as abilities / decks** (done) | `data/cards.ts`, `data/decks.ts`, `state/DeckContext.tsx`, deck screens | The equipped deck feeds the match HUD and, from 3C, the engine.        |
 | **3C — Controls / physics / combat**  | `game/**`                                              | Renders into the `<MatchScreen />` slot and feeds `HudState`.                            |
 | **4 — Cards, shop, packs**            | `features/progression/**`                              | `ShopScreen`/`PackPreviewScreen`/`CollectionScreen`, `data/cards.ts`, `data/packs.ts`. |
 | **5 — Card detail & level-up**        | `screens/CardDetailScreen.tsx`                         | The `cardDetail` route and card types from Block 4.                                    |
@@ -225,7 +225,42 @@ worth knowing before extending it:
 - Splash droplets are world-space points, not the old screen overlay: a 2D
   overlay cannot line up with a camera that orbits.
 
-### 4.5 The HUD contract (Block 1 → Block 3)
+### 4.5 The deck contract (Block 3B → Block 3C)
+
+A card **is** an ability, not a modifier. Three slots, one card each:
+
+```ts
+type AbilitySlot = 'attack1' | 'attack2' | 'ultimate';
+const { activeDeck } = useDecks();          // always a complete, playable deck
+CARD_BY_ID[activeDeck.cards.attack2].ability; // { damage, cooldownS, range, chargeS, tags }
+```
+
+Block 3C reads `ability` and makes the move happen; everything above it — the
+catalogue, the picker, the saved decks, the HUD labels — is settled here.
+
+- **Every rarity covers every slot.** There is no rarity budget and no "one
+  legendary max": three legendaries, three commons and any mix are equally
+  legal, and the starting collection can build all three so the rule is
+  demonstrable rather than merely stated. Rarity is paid for with cost, not
+  access — higher rarities hit harder but wait longer or charge slower.
+- **A card can only be equipped in the slot it was authored for.** The picker
+  lists nothing else, so the rule is expressed by what you are offered rather
+  than by an error afterwards.
+- **Saved decks are repaired on load, never trusted.** `sanitiseDeck()` runs on
+  every deck read from storage: a card that was deleted, moved slot or stopped
+  being owned falls back to the first card that fits. A deck read from a stale
+  save can therefore never start a match with a hole in it.
+- **Selecting a deck *is* saving it.** There is no separate apply step, so a
+  deck cannot be edited and then lost by leaving the screen.
+- **The deck screen owns the launch.** `mapSelect` navigates to `deckSelect`
+  with a `MatchTarget`, and that screen starts the match (or the queue). Opening
+  it from the menu passes `next: null` and the primary action is `Done`.
+
+Where the deck shows up in a match: the ability rail beside the minimap on
+desktop, the two touch pads and the ultimate tank on phones. Those are labels
+only — nothing fires until 3C.
+
+### 4.6 The HUD contract (Block 1 → Block 3)
 
 `HudState` in `src/types/game.ts` is the single hand-off point. Block 3 must
 produce this object every frame; the HUD is otherwise pure and stateless:
@@ -240,7 +275,7 @@ interface HudState {
 }
 ```
 
-### 4.6 The navigation contract
+### 4.7 The navigation contract
 
 Screens never import each other. They call `useNavigation()`:
 

@@ -1,6 +1,6 @@
-import type { CSSProperties } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import type { AbilityCard, Rarity } from '@/types/game';
-import { CARD_KIND_LABEL, RARITY_LABEL } from '@/data/cards';
+import { RARITY_LABEL, SLOT_GLYPH, SLOT_LABEL } from '@/data/cards';
 import { cn } from '@/lib/cn';
 
 export type CardSize = 'sm' | 'md' | 'lg';
@@ -15,6 +15,8 @@ export interface GameCardProps {
   showProgress?: boolean;
   /** Disables hover lift — used when the card is the focus of a screen. */
   static?: boolean;
+  /** Marker pinned to the art well's top-left, e.g. an "Equipped" chip. */
+  badge?: ReactNode;
   className?: string;
   style?: CSSProperties;
 }
@@ -49,13 +51,6 @@ const WELL: Record<Rarity, string> = {
   legendary: 'bg-[#3a2606]',
 };
 
-const KIND_GLYPH: Record<AbilityCard['kind'], string> = {
-  attack: '≈',
-  defense: '◈',
-  utility: '✦',
-  ultimate: '★',
-};
-
 const METRICS: Record<CardSize, { name: string; glyph: string; body: string; pad: string }> = {
   sm: { name: 'text-[9px]', glyph: 'text-4xl', body: 'text-[8px]', pad: 'p-1.5' },
   md: { name: 'text-[11px]', glyph: 'text-6xl', body: 'text-[9px]', pad: 'p-2' },
@@ -77,6 +72,7 @@ export function GameCard({
   locked = false,
   showProgress = true,
   static: isStatic = false,
+  badge,
   className,
   style,
 }: GameCardProps) {
@@ -173,8 +169,22 @@ export function GameCard({
               isLegendary && 'animate-rainbow-text animate-bob',
             )}
           >
-            {locked ? '?' : KIND_GLYPH[card.kind]}
+            {locked ? '?' : SLOT_GLYPH[card.slot]}
           </span>
+
+          {/* Top-left of the art well is the only corner nothing else claims —
+              the banner owns the top strip and the level chip its right end. */}
+          {badge && <span className="absolute top-1 left-1 z-20">{badge}</span>}
+
+          {/* Ability numbers, bottom-left of the art well. A card is a move now,
+              so what it costs to use belongs on its face, not on a detail page. */}
+          {!locked && size !== 'sm' && (
+            <span className="text-mist/70 bg-abyss/60 absolute bottom-1 left-1 z-20 flex gap-1.5 px-1 py-0.5 text-[8px] tabular-nums">
+              <span title="Damage">◆{card.ability.damage}</span>
+              <span title="Cooldown">↻{card.ability.cooldownS}s</span>
+              <span title="Range">↔{card.ability.range}</span>
+            </span>
+          )}
 
           {/* Epic: rising sparks. Legendary: more of them, brighter. */}
           {(isEpic || isLegendary) &&
@@ -218,7 +228,7 @@ export function GameCard({
               isLegendary && 'animate-rainbow-text',
             )}
           >
-            {RARITY_LABEL[rarity]} · {CARD_KIND_LABEL[card.kind]}
+            {RARITY_LABEL[rarity]} · {SLOT_LABEL[card.slot]}
           </span>
 
           {size !== 'sm' && (

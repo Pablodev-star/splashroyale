@@ -3,6 +3,7 @@ import { useNavigation } from '@/state/NavigationContext';
 import { MainMenuScreen } from '@/screens/MainMenuScreen';
 import { ModeSelectScreen } from '@/screens/ModeSelectScreen';
 import { MapSelectScreen } from '@/screens/MapSelectScreen';
+import { DeckScreen } from '@/screens/DeckScreen';
 import { MatchmakingScreen } from '@/screens/MatchmakingScreen';
 import { RoomLobbyScreen } from '@/screens/RoomLobbyScreen';
 import { MatchScreen } from '@/screens/MatchScreen';
@@ -36,6 +37,8 @@ function renderScreen(route: Route) {
       return <ModeSelectScreen />;
     case 'mapSelect':
       return <MapSelectScreen mode={route.params.mode} roomCode={route.params.roomCode} />;
+    case 'deckSelect':
+      return <DeckScreen next={route.params.next} />;
     case 'matchmaking':
       return <MatchmakingScreen mapId={route.params.mapId} />;
     case 'roomLobby':

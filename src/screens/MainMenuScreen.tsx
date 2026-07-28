@@ -97,6 +97,15 @@ export function MainMenuScreen() {
             </PixelButton>
             <PixelButton
               size="md"
+              variant="secondary"
+              icon="≈"
+              fullWidth
+              onClick={() => navigate('deckSelect', { next: null })}
+            >
+              Battle Deck
+            </PixelButton>
+            <PixelButton
+              size="md"
               variant="gold"
               icon="▣"
               fullWidth

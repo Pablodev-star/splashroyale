@@ -8,6 +8,10 @@ export interface TouchControlsProps {
   onAttackUp?: () => void;
   onKick?: () => void;
   onDiveToggle?: () => void;
+  /** Equipped attack-1 name (Block 3B). Falls back to the generic label. */
+  attackLabel?: string;
+  /** Equipped attack-2 name — the pad the deck's second attack sits on. */
+  kickLabel?: string;
   submerged?: boolean;
   /** Mirrors the layout for left-handed players (Settings). */
   mirrored?: boolean;
@@ -26,6 +30,8 @@ export function TouchControls({
   onAttackUp,
   onKick,
   onDiveToggle,
+  attackLabel = 'Attack',
+  kickLabel = 'Kick',
   submerged = false,
   mirrored = false,
   className,
@@ -91,9 +97,10 @@ export function TouchControls({
         />
       </div>
 
-      {/* Action pads */}
-      <div className="pointer-events-auto grid grid-cols-2 gap-2">
-        <ActionPad label="Kick" glyph="K" onPress={onKick} tone="secondary" />
+      {/* Action pads. Fixed width so an equipped ability with a long name
+          relabels the pad without moving the pads under the player's thumb. */}
+      <div className="pointer-events-auto grid w-[176px] shrink-0 grid-cols-2 gap-2">
+        <ActionPad label={kickLabel} glyph="✦" onPress={onKick} tone="secondary" />
         <ActionPad
           label={submerged ? 'Surface' : 'Dive'}
           glyph={submerged ? '^' : 'v'}
@@ -101,8 +108,8 @@ export function TouchControls({
           tone={submerged ? 'oxygen' : 'secondary'}
         />
         <ActionPad
-          label="Attack"
-          glyph="*"
+          label={attackLabel}
+          glyph="≈"
           onPressStart={onAttackDown}
           onPressEnd={onAttackUp}
           tone="primary"
@@ -147,14 +154,16 @@ function ActionPad({
       onPointerCancel={onPressEnd}
       onClick={onPress}
       className={cn(
-        'pixel-border-thin flex h-14 min-w-[56px] touch-none flex-col items-center justify-center',
+        'pixel-border-thin flex h-14 min-w-0 touch-none flex-col items-center justify-center',
         'transition-transform duration-[90ms] ease-[steps(2,jump-none)] active:translate-y-[2px]',
         PAD_TONE[tone],
         className,
       )}
     >
       <span className="text-base leading-none font-bold">{glyph}</span>
-      <span className="text-[8px] tracking-[0.14em] uppercase">{label}</span>
+      <span className="max-w-full truncate px-1 text-[8px] tracking-[0.14em] uppercase">
+        {label}
+      </span>
     </button>
   );
 }

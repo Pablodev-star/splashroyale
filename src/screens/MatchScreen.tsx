@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { GameMode, MapId, MatchOutcome } from '@/types/game';
+import type { AbilityCard, AbilitySlot, GameMode, MapId, MatchOutcome } from '@/types/game';
 import { MAP_BY_ID } from '@/data/maps';
-import { CHARACTERS } from '@/data/characters';
+import { CARD_BY_ID, SLOT_ORDER } from '@/data/cards';
 import { Arena3D, type Arena3DHandle, type SceneFighter } from '@/game/scene';
 import { useWaterReactions, type WaterActor } from '@/components/water/useWaterReactions';
 import { useSplashEvents, type SplashEvent } from '@/game/vfx';
@@ -13,6 +13,7 @@ import { PixelButton } from '@/components/ui/PixelButton';
 import { PixelBadge } from '@/components/ui/PixelBadge';
 import { useNavigation } from '@/state/NavigationContext';
 import { useSettings } from '@/state/SettingsContext';
+import { useDecks } from '@/state/DeckContext';
 
 export interface MatchScreenProps {
   mode: GameMode;
@@ -32,7 +33,19 @@ const MATCH_DURATION_MS = 120_000;
 export function MatchScreen({ mode, mapId, roomCode }: MatchScreenProps) {
   const { navigate, back } = useNavigation();
   const { settings } = useSettings();
+  const { activeDeck } = useDecks();
   const map = MAP_BY_ID[mapId];
+
+  // The equipped deck (Block 3B). Presentation only for now — the HUD, touch
+  // pads and ultimate tank name what you brought. Block 3C makes them fire.
+  const abilities = useMemo(() => {
+    const equipped: Partial<Record<AbilitySlot, AbilityCard>> = {};
+    for (const slot of SLOT_ORDER) {
+      const card = CARD_BY_ID[activeDeck.cards[slot]];
+      if (card) equipped[slot] = card;
+    }
+    return equipped;
+  }, [activeDeck]);
 
   const [paused, setPaused] = useState(false);
   const [charging, setCharging] = useState(false);
@@ -137,7 +150,8 @@ export function MatchScreen({ mode, mapId, roomCode }: MatchScreenProps) {
 
       <GameHud
         state={hud}
-        ultimateName={CHARACTERS[0].ultimate.name}
+        ultimateName={abilities.ultimate?.name ?? 'Ultimate'}
+        abilities={abilities}
         showMinimap={settings.showMinimap}
         arenaAspect={map.size.width / map.size.depth}
         onPause={() => setPaused(true)}
@@ -150,6 +164,8 @@ export function MatchScreen({ mode, mapId, roomCode }: MatchScreenProps) {
       <div className="md:hidden">
         <TouchControls
           submerged={submerged}
+          attackLabel={abilities.attack1?.name}
+          kickLabel={abilities.attack2?.name}
           mirrored={settings.leftHandedControls}
           onAttackDown={() => setCharging(true)}
           onAttackUp={() => setCharging(false)}

@@ -1,15 +1,18 @@
-import type { HudState } from '@/types/game';
+import type { AbilityCard, AbilitySlot, HudState } from '@/types/game';
 import { Nameplate } from './Nameplate';
 import { ChargeMeter } from './ChargeMeter';
 import { UltimateIndicator } from './UltimateIndicator';
 import { Minimap } from './Minimap';
 import { MatchTimer } from './MatchTimer';
+import { AbilityRail } from './AbilityRail';
 import { PixelIconButton } from '@/components/ui/PixelIconButton';
 import { cn } from '@/lib/cn';
 
 export interface GameHudProps {
   state: HudState;
   ultimateName: string;
+  /** The equipped deck (Block 3B), shown beside the minimap on desktop. */
+  abilities?: Partial<Record<AbilitySlot, AbilityCard>>;
   showMinimap?: boolean;
   /** Arena width / depth, forwarded to the minimap. */
   arenaAspect?: number;
@@ -25,6 +28,7 @@ export interface GameHudProps {
 export function GameHud({
   state,
   ultimateName,
+  abilities,
   showMinimap = true,
   arenaAspect,
   onPause,
@@ -49,12 +53,12 @@ export function GameHud({
         <Nameplate fighter={state.opponent} align="right" />
       </div>
 
-      {/* Bottom-left: minimap. Hidden on phones, where the stick lives there. */}
-      {showMinimap && (
-        <div className="absolute bottom-3 left-3 hidden md:block">
-          <Minimap entities={state.entities} aspect={arenaAspect} />
-        </div>
-      )}
+      {/* Bottom-left: minimap and the equipped deck. Hidden on phones, where the
+          stick lives there and the touch pads already name the abilities. */}
+      <div className="absolute bottom-3 left-3 hidden flex-col gap-2 md:flex">
+        {abilities && <AbilityRail cards={abilities} />}
+        {showMinimap && <Minimap entities={state.entities} aspect={arenaAspect} />}
+      </div>
 
       {/* Bottom-centre: charge meter. Sits above the touch pads on phones. */}
       <div className="absolute bottom-[184px] left-1/2 w-[78vw] -translate-x-1/2 md:bottom-3 md:w-[min(420px,60vw)]">
