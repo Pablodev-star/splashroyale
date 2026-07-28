@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useImperativeHandle, useRef, type Ref } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+  type Ref,
+} from 'react';
 import { useAnimationFrame } from '@/hooks/useAnimationFrame';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
 import type { WaterPalette } from '@/types/game';
@@ -30,8 +37,11 @@ export interface VfxCanvasProps {
  * land on the same pixel grid as everything else instead of looking like smooth
  * sprites pasted on top.
  *
- * The layer sleeps when there is nothing in flight: with no droplets alive the
- * loop clears once and stops scheduling, so an idle match costs nothing.
+ * The layer genuinely sleeps when nothing is in flight. That has to be React
+ * state rather than a ref: `useAnimationFrame` only tears the loop down when its
+ * `paused` argument changes, so an early `return` inside the callback would keep
+ * scheduling a frame 30 times a second for the whole match — which is most of a
+ * match, since droplets are the exception, not the rule.
  */
 export function VfxCanvas({
   palette,
@@ -44,8 +54,9 @@ export function VfxCanvas({
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const dropletsRef = useRef<Droplet[]>([]);
   const reducedMotion = useReducedMotion();
-  // Set while droplets are in flight; lets the loop idle when the pool is empty.
-  const dirtyRef = useRef(false);
+  // True only while droplets are in flight. Drives `paused`, so the rAF loop is
+  // actually torn down between splashes instead of spinning on empty.
+  const [active, setActive] = useState(false);
 
   const resize = useCallback(() => {
     const canvas = canvasRef.current;
@@ -80,7 +91,9 @@ export function VfxCanvas({
         ny * canvas.height,
         SPLASH_TIERS[tier],
       );
-      dirtyRef.current = true;
+      // Wakes the loop. Re-setting `true` while already active is a no-op in
+      // React, so rapid-fire splashes don't each cost a render.
+      setActive(true);
     },
     [reducedMotion],
   );
@@ -94,11 +107,9 @@ export function VfxCanvas({
       const droplets = dropletsRef.current;
 
       if (droplets.length === 0) {
-        // Clear exactly once after the last droplet dies, then go quiet.
-        if (dirtyRef.current) {
-          canvas.getContext('2d')?.clearRect(0, 0, canvas.width, canvas.height);
-          dirtyRef.current = false;
-        }
+        // Last droplet just died: wipe the layer, then stop the loop entirely.
+        canvas.getContext('2d')?.clearRect(0, 0, canvas.width, canvas.height);
+        setActive(false);
         return;
       }
 
@@ -122,7 +133,7 @@ export function VfxCanvas({
         ctx.fillRect(Math.round(d.x), Math.round(d.y), size, size);
       }
     },
-    { fps, paused: reducedMotion },
+    { fps, paused: reducedMotion || !active },
   );
 
   return (
