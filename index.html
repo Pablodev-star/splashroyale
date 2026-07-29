@@ -86,7 +86,7 @@
           lastError = 'Unhandled promise rejection: ' + (reason && reason.message ? reason.message : String(reason));
         });
 
-        window.setTimeout(function () {
+        function report() {
           var root = document.getElementById('root');
           if (!root || root.firstChild) return; // App mounted normally.
 
@@ -216,7 +216,50 @@
           box.appendChild(reload);
 
           document.body.appendChild(box);
-        }, 2500);
+
+          // Everything above is a guess about a page that is still live. An
+          // exceptionally slow connection can deliver the bundle after the
+          // deadline has passed, and React would then mount underneath this
+          // overlay — leaving the player staring at a failure screen for an
+          // app that is running fine behind it. Stand down the moment
+          // anything reaches #root. Polling rather than MutationObserver
+          // keeps this script to the ES5 that made it trustworthy; it is one
+          // property read every 400ms, and it stops the instant it succeeds.
+          var heal = window.setInterval(function () {
+            if (!root.firstChild) return;
+            window.clearInterval(heal);
+            if (box.parentNode) box.parentNode.removeChild(box);
+          }, 400);
+        }
+
+        // While the app was inlined, the countdown could start at parse time:
+        // the whole program had already arrived with the document, so 2.5s of
+        // nothing meant something was genuinely wrong. The bundle is a
+        // separate ~945 kB file now, and on a slow connection the download
+        // alone can outlast that — the watchdog would accuse a page that is
+        // merely still loading.
+        //
+        // `load` is the anchor to start from. Module scripts are deferred, so
+        // it fires once app.js has been fetched *and* evaluated, and it fires
+        // even when the fetch failed — which is exactly the case worth
+        // reporting. What it does not survive is a connection that stalls
+        // open forever, so an outer cap still reports eventually.
+        var armed = false;
+        function arm(delay) {
+          if (armed) return;
+          armed = true;
+          window.setTimeout(report, delay);
+        }
+        if (document.readyState === 'complete') {
+          arm(2500);
+        } else {
+          window.addEventListener('load', function () {
+            arm(2500);
+          });
+          window.setTimeout(function () {
+            arm(0);
+          }, 20000);
+        }
       })();
     </script>
     <script type="module" src="/src/main.tsx"></script>
