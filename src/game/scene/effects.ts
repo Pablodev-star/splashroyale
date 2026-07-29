@@ -142,6 +142,17 @@ const WAVE_LIT = '#4aa8d8';
 const WAVE_CREST = '#eafcff';
 const FOAM = '#ffffff';
 
+/**
+ * Foam on an effect that is not yours.
+ *
+ * Warm rather than red: foam is white in the world, and a scarlet crest reads
+ * as lava, not water. A rose cast against the cool blues of the pool is enough
+ * to answer "is that mine?" at a glance while still looking like sea spray —
+ * the same treatment the beam core already used before this rewrite.
+ */
+const FOAM_HOSTILE = '#ffdede';
+const WAVE_CREST_HOSTILE = '#ffd2d2';
+
 const BEAM_CORE = '#eafcff';
 const BEAM_EDGE = '#34b6d8';
 const MINE_BODY = '#0a1f33';
@@ -169,7 +180,10 @@ const BEAM_SEGMENTS = 14;
 const BEAM_THICKNESS = 0.5;
 
 /** Caps. Generous enough that nothing is ever dropped in a real match. */
-const LIMITS = { zone: 8, ring: 24 };
+// Rings are shared by three effects — zone outlines, mine fuses and geyser
+// telegraphs — so the cap has to cover the worst case of all three at once
+// (8 + 8 + 12), not any one of them.
+const LIMITS = { zone: 8, ring: 32 };
 
 /**
  * Chunk budget.
@@ -417,6 +431,33 @@ export class EffectLayer {
     // Churn around the rim: the disc alone is a decal, and a decal on water
     // reads as a sticker. Blocks rising and falling at its edge give it a
     // surface that is being disturbed.
+    //
+    // Every third block takes the owner colour instead of the flavour's. For a
+    // zone this is the most consequential cue in the game and not merely a
+    // nicety: a zone only ever damages the enemy of whoever cast it, so "is it
+    // mine?" is literally "does this hurt me?". The flavour still owns the
+    // fill and the froth, because *what kind of hazard* has to survive the
+    // answer — a green puddle ringed in red is theirs, ringed in cyan is
+    // yours, and both are still obviously poison.
+    const ownerTint = zone.mine ? OWNER_RIM.mine : OWNER_RIM.theirs;
+
+    // An outline in the owner's colour, drawn around the patch.
+    //
+    // Tinting a few of the churn blocks was not enough on its own: against a
+    // bright green slick the accents read as more slick. A continuous ring is
+    // unambiguous, and it reuses the language the mine and geyser telegraphs
+    // already established — a coloured ring on the water means "this circle
+    // matters".
+    const outline = this.rings.next();
+    if (outline) {
+      const material = outline.material as MeshBasicMaterial;
+      material.color.set(ownerTint);
+      material.opacity = 0.75 * fade;
+      outline.position.set(cx, Y.warn, cz);
+      outline.scale.setScalar(radius * 1.06);
+      outline.rotation.z = this.clock * skin.spin * 0.4;
+    }
+
     const rimCount = 14;
     for (let i = 0; i < rimCount; i += 1) {
       const a = (i / rimCount) * Math.PI * 2 + this.clock * skin.spin * 0.5;
@@ -431,7 +472,7 @@ export class EffectLayer {
         0.3,
         h,
         0.3,
-        i % 3 === 0 ? skin.rim : skin.froth,
+        i % 3 === 0 ? ownerTint : skin.froth,
         a,
       );
     }
@@ -521,6 +562,13 @@ export class EffectLayer {
     const halfWidth = wave.width * this.arena;
     const segWidth = (halfWidth * 2) / WAVE_SEGMENTS;
 
+    // Ownership rides on the foam. Everything else about a wave is water and
+    // has to stay water-coloured, but foam is the one part that can carry a
+    // tint without looking wrong — and something this large crossing the arena
+    // is exactly when "whose is it?" matters most.
+    const foam = wave.mine ? FOAM : FOAM_HOSTILE;
+    const crestColour = wave.mine ? WAVE_CREST : WAVE_CREST_HOSTILE;
+
     for (let i = 0; i < WAVE_SEGMENTS; i += 1) {
       const u = (i + 0.5) / WAVE_SEGMENTS;
       const lateral = (u - 0.5) * halfWidth * 2;
@@ -587,7 +635,7 @@ export class EffectLayer {
           size,
           size,
           segWidth * 0.6,
-          FOAM,
+          foam,
           yaw,
         );
       }
@@ -639,7 +687,7 @@ export class EffectLayer {
         0.5,
         0.2 + 0.1 * Math.sin(this.clock * 8 + i),
         segWidth * 0.96,
-        FOAM,
+        foam,
         yaw,
       );
 
@@ -667,7 +715,7 @@ export class EffectLayer {
         0.62,
         crestH,
         segWidth * 1.02,
-        WAVE_CREST,
+        crestColour,
         yaw,
       );
 
@@ -682,7 +730,7 @@ export class EffectLayer {
           0.42,
           0.3,
           segWidth * 0.9,
-          FOAM,
+          foam,
           yaw,
         );
       }
@@ -705,7 +753,7 @@ export class EffectLayer {
             size,
             size,
             size,
-            FOAM,
+            foam,
           );
         }
       }
@@ -720,7 +768,7 @@ export class EffectLayer {
           0.5,
           0.12,
           segWidth * 0.8,
-          FOAM,
+          foam,
           yaw,
         );
       }
@@ -745,6 +793,9 @@ export class EffectLayer {
     const width = beam.width * this.arena * 1.15;
     const segLength = length / BEAM_SEGMENTS;
     const height = 0.9;
+    // A beam is the fastest-appearing effect in the game and two can be live at
+    // once, so the core carries the owner tint the same way wave foam does.
+    const core = beam.mine ? BEAM_CORE : FOAM_HOSTILE;
 
     for (let i = 0; i < BEAM_SEGMENTS; i += 1) {
       const t = (i + 0.5) / BEAM_SEGMENTS;
@@ -770,7 +821,7 @@ export class EffectLayer {
         segLength * 0.95,
         thickness * 0.5,
         w * 0.45,
-        BEAM_CORE,
+        core,
         yaw,
       );
 
@@ -778,7 +829,7 @@ export class EffectLayer {
       // read as pressurised flow rather than a light.
       const pulse = (t + this.clock * 1.6) % 1;
       if (pulse < 0.12) {
-        this.chunks.add(px, height, pz, segLength * 1.1, thickness * 1.3, w * 1.15, FOAM, yaw);
+        this.chunks.add(px, height, pz, segLength * 1.1, thickness * 1.3, w * 1.15, core, yaw);
       }
     }
 
@@ -795,7 +846,7 @@ export class EffectLayer {
         size,
         size,
         size,
-        FOAM,
+        core,
       );
     }
 
@@ -813,7 +864,7 @@ export class EffectLayer {
         size,
         size,
         size,
-        BEAM_CORE,
+        core,
       );
     }
   }
