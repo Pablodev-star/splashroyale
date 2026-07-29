@@ -79,7 +79,12 @@ export function DeckScreen({ next }: DeckScreenProps) {
       navigate('matchmaking', { mapId: next.mapId });
       return;
     }
-    navigate('match', { mode: next.mode, mapId: next.mapId, roomCode: next.roomCode });
+    navigate('match', {
+      mode: next.mode,
+      mapId: next.mapId,
+      roomCode: next.roomCode,
+      difficulty: next.difficulty,
+    });
   };
 
   const commitRename = () => {

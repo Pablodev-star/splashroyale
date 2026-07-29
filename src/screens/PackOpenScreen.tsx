@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { Rarity } from '@/types/game';
 import { PACK_BY_ID } from '@/data/packs';
 import { RARITY_LABEL, RARITY_ORDER } from '@/data/cards';
 import type { PackPull } from '@/game/progression/packRoll';
 import { GameCard } from '@/components/cards/GameCard';
+import { CardReveal } from '@/components/packs/CardReveal';
 import { Pack3D } from '@/components/packs/Pack3D';
 import { WaterCanvas } from '@/components/water/WaterCanvas';
 import { PixelPanel } from '@/components/ui/PixelPanel';
@@ -13,28 +13,12 @@ import { useNavigation } from '@/state/NavigationContext';
 import { useCollection } from '@/state/PlayerContext';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
 import { formatNumber } from '@/lib/format';
-import { cn } from '@/lib/cn';
 
 export interface PackOpenScreenProps {
   packId: string;
   pulls: PackPull[];
   goldFromDuplicates: number;
 }
-
-/** How long each card sits alone on screen before the next one can be taken. */
-const REVEAL_MS: Record<Rarity, number> = {
-  common: 260,
-  rare: 420,
-  epic: 650,
-  legendary: 1000,
-};
-
-const GLOW: Record<Rarity, string> = {
-  common: 'shadow-[0_0_0_3px_var(--color-rarity-common)]',
-  rare: 'shadow-[0_0_0_3px_var(--color-rarity-rare)]',
-  epic: 'shadow-[0_0_0_3px_var(--color-rarity-epic)]',
-  legendary: 'animate-rainbow-frame',
-};
 
 /**
  * Opening a pack, one card at a time (Block 4).
@@ -44,9 +28,11 @@ const GLOW: Record<Rarity, string> = {
  * *presentation* of something that already happened, so backing out, reloading
  * or losing the tab cannot cost the player a pack.
  *
- * Rarity controls the pacing rather than only the colour. A common flashes past;
- * a legendary holds the screen for a full second before you can move on, because
- * the pause is most of what makes it feel rare.
+ * Rarity controls the *ceremony*, not only the colour. Each card climbs a rarity
+ * ladder before it lands — see `CardReveal` — so a common is over in a quarter
+ * of a second and a legendary takes nearly three, escalating the whole way. The
+ * previous version simply held the finished card on screen for longer, which
+ * made the best moment in the game a wait rather than a build-up.
  */
 export function PackOpenScreen({ packId, pulls, goldFromDuplicates }: PackOpenScreenProps) {
   const { navigate, back } = useNavigation();
@@ -62,18 +48,12 @@ export function PackOpenScreen({ packId, pulls, goldFromDuplicates }: PackOpenSc
   const current = index >= 0 && index < pulls.length ? pulls[index] : undefined;
   const card = current ? cardById[current.cardId] : undefined;
 
+  // `CardReveal` owns the pacing now and reports when the card has landed, so
+  // there is no duration table here to drift out of step with the animation.
   useEffect(() => {
-    if (!current) {
-      setSettled(true);
-      return;
-    }
-    setSettled(false);
-    // Reduced motion still gets the ordering and the summary, just without the
-    // enforced dwell — the whole point of the pause is the flourish.
-    const hold = reducedMotion ? 0 : REVEAL_MS[current.rarity];
-    const timer = window.setTimeout(() => setSettled(true), hold);
-    return () => window.clearTimeout(timer);
-  }, [current, reducedMotion]);
+    if (!current) setSettled(true);
+    else setSettled(false);
+  }, [current]);
 
   const advance = useCallback(() => {
     if (!settled) return;
@@ -146,17 +126,14 @@ export function PackOpenScreen({ packId, pulls, goldFromDuplicates }: PackOpenSc
             }. Tap for the next card.`}
             className="flex flex-1 cursor-pointer flex-col items-center justify-center gap-4 px-4 focus-visible:outline-2 focus-visible:outline-offset-[-8px] focus-visible:outline-foam"
           >
-            <div
-              key={index}
-              className={cn(
-                'animate-pop-in w-[min(240px,60vw)]',
-                !reducedMotion && current.rarity === 'legendary' && 'animate-tilt',
-              )}
-            >
-              <div className={cn(GLOW[current.rarity])}>
-                <GameCard card={card} size="md" showProgress={false} static />
-              </div>
-            </div>
+            <CardReveal
+              card={card}
+              rarity={current.rarity}
+              revealKey={index}
+              reducedMotion={reducedMotion}
+              onSettled={() => setSettled(true)}
+              className="min-h-[320px] w-full"
+            />
 
             <div className="flex flex-col items-center gap-1.5">
               {current.isNew ? (

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { GameMode, MapId } from '@/types/game';
+import type { BotDifficulty, GameMode, MapId } from '@/types/game';
 import { MAPS } from '@/data/maps';
 import { MapPreview3D } from '@/game/scene';
 import { ScreenFrame } from '@/components/ui/ScreenFrame';
@@ -11,6 +11,8 @@ import { cn } from '@/lib/cn';
 export interface MapSelectScreenProps {
   mode: GameMode;
   roomCode?: string;
+  /** Chosen on the mode screen; carried through to the match unchanged. */
+  difficulty?: BotDifficulty;
 }
 
 const MODE_LABEL: Record<GameMode, string> = {
@@ -19,7 +21,7 @@ const MODE_LABEL: Record<GameMode, string> = {
   privateRoom: 'Private Room',
 };
 
-export function MapSelectScreen({ mode, roomCode }: MapSelectScreenProps) {
+export function MapSelectScreen({ mode, roomCode, difficulty }: MapSelectScreenProps) {
   const { navigate, back } = useNavigation();
   const [selected, setSelected] = useState<MapId>(MAPS[0].id);
 
@@ -48,7 +50,7 @@ export function MapSelectScreen({ mode, roomCode }: MapSelectScreenProps) {
               icon="▶"
               emphasis
               onClick={() =>
-                navigate('deckSelect', { next: { mode, mapId: selected, roomCode } })
+                navigate('deckSelect', { next: { mode, mapId: selected, roomCode, difficulty } })
               }
             >
               Choose Deck

@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { AbilityCard, AbilitySlot, GameMode, MapId } from '@/types/game';
+import type { AbilityCard, AbilitySlot, BotDifficulty, GameMode, MapId } from '@/types/game';
 import { MAP_BY_ID } from '@/data/maps';
 import { SLOT_ORDER } from '@/data/cards';
 import { Arena3D, type Arena3DHandle, type SceneFighter } from '@/game/scene';
 import { useMatchEngine } from '@/game/engine';
+import { botProfile } from '@/game/engine/difficulty';
 import { useWaterReactions, type WaterActor } from '@/components/water/useWaterReactions';
 import { useSplashEvents } from '@/game/vfx';
 import { GameHud } from '@/components/hud/GameHud';
@@ -23,6 +24,8 @@ export interface MatchScreenProps {
   mode: GameMode;
   mapId: MapId;
   roomCode?: string;
+  /** Which bot to fight. Only used in `localBots`. */
+  difficulty?: BotDifficulty;
 }
 
 const MATCH_DURATION_MS = 120_000;
@@ -35,7 +38,7 @@ const MATCH_DURATION_MS = 120_000;
  * no damage, no AI here — those live in `@/game/engine`, which has no idea React
  * exists.
  */
-export function MatchScreen({ mode, mapId, roomCode }: MatchScreenProps) {
+export function MatchScreen({ mode, mapId, roomCode, difficulty }: MatchScreenProps) {
   const { navigate, back } = useNavigation();
   const { settings } = useSettings();
   const { activeDeck } = useDecks();
@@ -48,10 +51,13 @@ export function MatchScreen({ mode, mapId, roomCode }: MatchScreenProps) {
 
   const { snapshot, hud, cooldowns, inputRef, concede } = useMatchEngine({
     playerName: settings.playerName,
-    opponentName: mode === 'localBots' ? 'Bot Alpha' : 'Challenger',
+    // The bot is named after the difficulty, so the nameplate says which one
+    // you are fighting without spending any HUD space on it.
+    opponentName: mode === 'localBots' ? botProfile(difficulty).label : 'Challenger',
     deck: activeDeck,
     durationMs: MATCH_DURATION_MS,
     paused,
+    difficulty,
   });
 
   /** The equipped cards, for HUD labels and the touch pads. */

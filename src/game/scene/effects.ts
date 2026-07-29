@@ -1,5 +1,4 @@
 import {
-  BoxGeometry,
   CanvasTexture,
   CircleGeometry,
   Group,
@@ -10,26 +9,31 @@ import {
   SRGBColorSpace,
   type Object3D,
 } from 'three';
+import { ChunkField, hash01, hash11 } from './chunks';
 
 /**
- * Visuals for the block 7A ability effects.
+ * Visuals for the ability effects.
  *
  * Every shape the engine can produce needs to be legible at a glance while
  * something is trying to hit you, which is a stricter requirement than looking
- * good in a screenshot. Two rules follow from it:
+ * good in a screenshot. Three rules follow from it:
  *
  * 1. **Colour carries meaning, not decoration.** Green is "this hurts you over
  *    time", amber is "this is about to happen here", cyan is the arena's own
- *    water. A player should be able to name what a patch of colour will do
- *    before reading anything.
- * 2. **Ownership is visible.** Effects you cast and effects cast at you look
- *    different (yours keep a cool rim, theirs a hot one), because "is that
- *    mine?" is the first question about anything on the floor.
+ *    water.
+ * 2. **Ownership is visible.** Effects you cast and effects cast at you differ,
+ *    because "is that mine?" is the first question about anything on the floor.
+ * 3. **A phenomenon is made of pieces.** The first pass built each effect from
+ *    a few stretched primitives, and it showed: a tsunami was a box sliding
+ *    across the pool. Water does not have flat faces. Everything here is
+ *    assembled from many small chunks whose heights, widths and offsets vary
+ *    across the shape and over time — a crest is fifteen columns at different
+ *    heights with a lip curling over them and spray coming off the top.
  *
- * Transparency is done with **dithered alpha**, not smooth alpha: the texture
- * is a Bayer-thresholded checker so edges stay hard pixels under
- * `NearestFilter`. Smooth alpha would give soft gradients that read as modern
- * 3D and break the palette rule (STYLEGUIDE §3) the rest of the scene keeps.
+ * All of that detail goes through one `ChunkField`, so a screen full of
+ * effects is a single draw call regardless of how many pieces they are made
+ * of. Only the flat zone discs and the warning rings are separate meshes,
+ * because both need a texture or a ring geometry a box cannot give.
  */
 
 /** Normalised (0..1 arena) effect data, mirroring the engine snapshot. */
@@ -102,39 +106,93 @@ export const EMPTY_EFFECTS: SceneEffects = {
 /* --- Palette --------------------------------------------------------------- */
 
 interface ZoneSkin {
-  /** Fill, and the harder rim drawn around it. */
   fill: string;
   rim: string;
-  /** Radians per second the disc turns. Zero for a still puddle. */
+  /** Radians per second the disc turns. */
   spin: number;
+  /** Colour of the bubbles and churn rising off it. */
+  froth: string;
 }
 
 const ZONE_SKIN: Record<SceneZone['flavour'], ZoneSkin> = {
   // Sickly green, the one colour nothing else in the arena uses — a poison
-  // patch has to be identifiable against blue water and a white deck at any
-  // camera angle.
-  poison: { fill: '#4faa2e', rim: '#8fe04a', spin: 0.25 },
-  // Chemical yellow-green: reads as "treated water gone wrong" and stays
-  // distinct from poison at a glance because it is much paler.
-  chlorine: { fill: '#b4c93a', rim: '#e9f77d', spin: 0.15 },
-  // A hole rather than a stain, so it is dark where the others are bright, and
-  // it turns fast enough to read as a current.
-  whirlpool: { fill: '#07243f', rim: '#3fa9d8', spin: 2.6 },
+  // patch has to be identifiable against blue water and a white deck.
+  poison: { fill: '#4faa2e', rim: '#8fe04a', spin: 0.25, froth: '#b6f26a' },
+  // Chemical yellow-green: "treated water gone wrong", and much paler than
+  // poison so the two never blur together.
+  chlorine: { fill: '#b4c93a', rim: '#e9f77d', spin: 0.15, froth: '#f4ffa8' },
+  // A hole rather than a stain: dark where the others are bright, turning fast
+  // enough to read as a current.
+  whirlpool: { fill: '#07243f', rim: '#3fa9d8', spin: 2.6, froth: '#9ef0f5' },
 };
 
 /** Rim colour by ownership. Answers "is that mine?" before anything else. */
 const OWNER_RIM = { mine: '#9ef0f5', theirs: '#ff6b6b' } as const;
 
-// Deliberately darker than any depth band in the pool palettes, so the wall
-// reads as a solid mass against the water rather than a brighter patch of it.
-const WAVE_BODY = '#12496f';
-const WAVE_TROUGH = '#06243c';
+/* Water tones for the wave.
+ *
+ * Dark enough to stand against every pool palette, but not as dark as the
+ * first pass: at #0a3255 the mass read as a rock rather than as water, because
+ * nothing else in the arena is that close to black. The four tones step up
+ * from the shadowed base to a lit band under the crest. */
+const WAVE_DEEP = '#0d3d63';
+const WAVE_BODY = '#175a86';
+const WAVE_FACE = '#2482b8';
+const WAVE_LIT = '#4aa8d8';
 const WAVE_CREST = '#eafcff';
+const FOAM = '#ffffff';
+
+/**
+ * Foam on an effect that is not yours.
+ *
+ * Warm rather than red: foam is white in the world, and a scarlet crest reads
+ * as lava, not water. A rose cast against the cool blues of the pool is enough
+ * to answer "is that mine?" at a glance while still looking like sea spray —
+ * the same treatment the beam core already used before this rewrite.
+ */
+const FOAM_HOSTILE = '#ffdede';
+const WAVE_CREST_HOSTILE = '#ffd2d2';
+
 const BEAM_CORE = '#eafcff';
 const BEAM_EDGE = '#34b6d8';
 const MINE_BODY = '#0a1f33';
-const GEYSER_COLUMN = '#bfefff';
+const MINE_TRIM = '#ff6b6b';
+const GEYSER_WATER = '#7fd4f0';
+const GEYSER_FOAM = '#eafcff';
 const WARN_COLOUR = '#ffc247';
+
+/* --- Dimensions ------------------------------------------------------------- */
+
+/** Metres above the water plane, so nothing z-fights the surface. */
+const Y = { zone: 0.05, mine: 0.14, warn: 0.07 };
+
+/** Metres a wave stands at full height — comfortably above head height. */
+const WAVE_HEIGHT = 2.6;
+/** Columns across a wave's face. More reads as water; fewer reads as a fence. */
+const WAVE_SEGMENTS = 15;
+/** Metres a geyser column reaches. Tall enough to read, short enough to frame. */
+const GEYSER_HEIGHT = 3.4;
+/** Boxes stacked up a geyser column. */
+const GEYSER_STACK = 10;
+/** Segments along a beam, so it can taper and flicker unevenly. */
+const BEAM_SEGMENTS = 14;
+/** Metres a beam stands tall. Independent of its width — see `drawBeam`. */
+const BEAM_THICKNESS = 0.5;
+
+/** Caps. Generous enough that nothing is ever dropped in a real match. */
+// Rings are shared by three effects — zone outlines, mine fuses and geyser
+// telegraphs — so the cap has to cover the worst case of all three at once
+// (8 + 8 + 12), not any one of them.
+const LIMITS = { zone: 8, ring: 32 };
+
+/**
+ * Chunk budget.
+ *
+ * Worst case is roughly: 3 waves x 62, 12 geysers x 24, 8 zones x 50, 4 beams
+ * x 32, 8 mines x 11. Real matches use a fraction of that — this is sized so
+ * the cap is never the thing you notice.
+ */
+const CHUNK_CAPACITY = 1400;
 
 /* --- Dithered disc texture -------------------------------------------------- */
 
@@ -151,11 +209,9 @@ const BAYER4 = [
 ];
 
 /**
- * Builds one zone disc as a texture: dithered body, solid rim, and a couple of
- * concentric rings so the surface has some structure to rotate against.
- *
- * Drawn once per flavour at construction and shared by every instance — these
- * are 64px canvases, but rebuilding them per cast would allocate during combat.
+ * One zone disc as a texture: dithered body, solid rim, concentric rings for
+ * the spin to show against. Drawn once per flavour and shared — rebuilding a
+ * canvas per cast would allocate during combat.
  */
 function makeZoneTexture(skin: ZoneSkin): CanvasTexture {
   const size = 64;
@@ -177,11 +233,9 @@ function makeZoneTexture(skin: ZoneSkin): CanvasTexture {
       const distance = Math.hypot(x - centre, y - centre) / centre;
       if (distance > 1) continue; // Outside the disc: fully transparent.
 
-      // The rim is a hard band at the edge; inside it, density falls off
-      // toward the centre so the middle is see-through and a fighter standing
-      // in the puddle is never hidden by it.
+      // Hard rim band; inside it the density falls toward the centre so a
+      // fighter standing in the puddle is never hidden by it.
       const isRim = distance > 0.87;
-      // Two faint rings give the spin something to show.
       const isRing = Math.abs(distance - 0.42) < 0.05 || Math.abs(distance - 0.66) < 0.04;
       const density = isRim ? 1 : isRing ? 0.85 : 0.34 + (1 - distance) * 0.18;
 
@@ -215,11 +269,10 @@ function hexToRgb(hex: string): [number, number, number] {
 /**
  * A fixed pool of meshes reused across frames.
  *
- * Effects appear and vanish constantly, and creating a `Mesh` per cast would
- * allocate geometry and materials mid-fight — the one place in this codebase
- * where a GC pause is actually visible. Instead every slot is built once and
- * simply hidden when unused, exactly as the droplet and projectile buffers
- * already work.
+ * Effects appear and vanish constantly, and building a `Mesh` per cast would
+ * allocate geometry and materials mid-fight — the one place a GC pause is
+ * actually visible. Every slot is built once and hidden when unused, exactly
+ * as the droplet and projectile buffers already work.
  */
 class MeshPool<T extends Object3D> {
   private readonly items: T[] = [];
@@ -235,7 +288,6 @@ class MeshPool<T extends Object3D> {
     this.used = 0;
   }
 
-  /** Next free mesh, or null once the pool is exhausted. */
   next(): T | null {
     if (this.used >= this.limit) return null;
     let item = this.items[this.used];
@@ -249,7 +301,6 @@ class MeshPool<T extends Object3D> {
     return item;
   }
 
-  /** Hides everything not claimed this frame. */
   end(): void {
     for (let i = this.used; i < this.items.length; i += 1) this.items[i].visible = false;
   }
@@ -269,28 +320,22 @@ class MeshPool<T extends Object3D> {
   }
 }
 
+/** Stable numeric seed from an effect id, so its jitter never re-rolls. */
+function seedOf(id: string): number {
+  let seed = 0;
+  for (let i = 0; i < id.length; i += 1) seed = (seed * 31 + id.charCodeAt(i)) % 100000;
+  return seed;
+}
+
 /* --- The layer -------------------------------------------------------------- */
-
-/** Caps. Generous enough that nothing is ever dropped in a real match. */
-const LIMITS = { zone: 8, wave: 6, beam: 4, mine: 8, geyser: 12 };
-
-/** Metres above the water plane each effect sits, so nothing z-fights. */
-const Y = { zone: 0.05, wave: 0.02, beam: 0.9, mine: 0.12, warn: 0.07 };
-
-/** Metres a wave stands at full height — comfortably above head height. */
-const WAVE_HEIGHT = 2.4;
-/** Metres a geyser column reaches. Tall enough to read, short enough to frame. */
-const GEYSER_HEIGHT = 3.2;
 
 export class EffectLayer {
   readonly group = new Group();
 
   private readonly zoneTextures: Record<SceneZone['flavour'], CanvasTexture>;
-  private readonly zones: MeshPool<Mesh>;
-  private readonly waves: MeshPool<Group>;
-  private readonly beams: MeshPool<Group>;
-  private readonly mines: MeshPool<Group>;
-  private readonly geysers: MeshPool<Group>;
+  private readonly discs: MeshPool<Mesh>;
+  private readonly rings: MeshPool<Mesh>;
+  private readonly chunks: ChunkField;
 
   private clock = 0;
 
@@ -302,12 +347,11 @@ export class EffectLayer {
       whirlpool: makeZoneTexture(ZONE_SKIN.whirlpool),
     };
 
-    this.zones = new MeshPool(
+    this.discs = new MeshPool(
       this.group,
       () => {
-        // A unit disc laid flat; scale sets the real radius each frame.
         const mesh = new Mesh(
-          new CircleGeometry(1, 24),
+          new CircleGeometry(1, 28),
           new MeshBasicMaterial({ transparent: true, depthWrite: false }),
         );
         mesh.rotation.x = -Math.PI / 2;
@@ -316,302 +360,711 @@ export class EffectLayer {
       LIMITS.zone,
     );
 
-    this.waves = new MeshPool(this.group, () => makeWaveMesh(), LIMITS.wave);
-    this.beams = new MeshPool(this.group, () => makeBeamMesh(), LIMITS.beam);
-    this.mines = new MeshPool(this.group, () => makeMineMesh(), LIMITS.mine);
-    this.geysers = new MeshPool(this.group, () => makeGeyserMesh(), LIMITS.geyser);
+    this.rings = new MeshPool(
+      this.group,
+      () => {
+        const mesh = new Mesh(
+          new RingGeometry(0.74, 1, 24),
+          new MeshBasicMaterial({ transparent: true, depthWrite: false }),
+        );
+        mesh.rotation.x = -Math.PI / 2;
+        return mesh;
+      },
+      LIMITS.ring,
+    );
+
+    this.chunks = new ChunkField(this.group, CHUNK_CAPACITY);
   }
 
   /**
    * Normalised arena coordinate to world. The water plane is centred on the
    * origin, so 0..1 maps to -arena/2..+arena/2 — the same transform
-   * `ArenaScene.toWorld` uses. Lengths (radii, widths) just multiply by
-   * `arena`; only positions need the shift.
+   * `ArenaScene.toWorld` uses. Lengths just multiply by `arena`.
    */
   private wx(n: number): number {
     return (n - 0.5) * this.arena;
   }
 
-  /** Places every effect for this frame. `dt` drives spin and flicker. */
+  /** Places every effect for this frame. `dt` drives spin, flicker and spray. */
   update(effects: SceneEffects, dt: number): void {
     this.clock += dt;
-    const scale = this.arena;
+    this.discs.begin();
+    this.rings.begin();
+    this.chunks.begin();
 
-    /* --- Zones ----------------------------------------------------------- */
-    this.zones.begin();
-    for (const zone of effects.zones) {
-      const mesh = this.zones.next();
-      if (!mesh) break;
-      const skin = ZONE_SKIN[zone.flavour];
-      const material = mesh.material as MeshBasicMaterial;
+    for (const zone of effects.zones) this.drawZone(zone);
+    for (const wave of effects.waves) this.drawWave(wave);
+    for (const beam of effects.beams) this.drawBeam(beam);
+    for (const item of effects.mines) this.drawMine(item);
+    for (const geyser of effects.geysers) this.drawGeyser(geyser);
+
+    this.discs.end();
+    this.rings.end();
+    this.chunks.end();
+  }
+
+  /* --- Zones ------------------------------------------------------------- */
+
+  private drawZone(zone: SceneZone): void {
+    const skin = ZONE_SKIN[zone.flavour];
+    const cx = this.wx(zone.x);
+    const cz = this.wx(zone.y);
+    const radius = zone.radius * this.arena;
+    const seed = seedOf(zone.id);
+
+    // Fades only over the last quarter of its life: a hazard that starts
+    // dimming immediately reads as already gone while it is still lethal.
+    const fade = zone.progress > 0.75 ? 1 - (zone.progress - 0.75) / 0.25 : 1;
+
+    const disc = this.discs.next();
+    if (disc) {
+      const material = disc.material as MeshBasicMaterial;
       material.map = this.zoneTextures[zone.flavour];
-      // Fades only over the last quarter of its life: a hazard that starts
-      // dimming immediately reads as already gone while it is still lethal.
-      const fade = zone.progress > 0.75 ? 1 - (zone.progress - 0.75) / 0.25 : 1;
       material.opacity = 0.55 + 0.45 * fade;
       material.needsUpdate = true;
-
-      mesh.position.set(this.wx(zone.x), Y.zone, this.wx(zone.y));
-      const radius = zone.radius * scale;
-      // A whirlpool visibly tightens as it spins down; the puddles hold size.
+      disc.position.set(cx, Y.zone, cz);
       const pulse = zone.flavour === 'whirlpool' ? 1 - zone.progress * 0.25 : 1;
-      mesh.scale.setScalar(radius * pulse);
-      mesh.rotation.z = this.clock * skin.spin * (zone.mine ? 1 : -1);
+      disc.scale.setScalar(radius * pulse);
+      disc.rotation.z = this.clock * skin.spin * (zone.mine ? 1 : -1);
     }
-    this.zones.end();
 
-    /* --- Waves ----------------------------------------------------------- */
-    this.waves.begin();
-    for (const wave of effects.waves) {
-      const group = this.waves.next();
-      if (!group) break;
-      group.position.set(this.wx(wave.x), Y.wave, this.wx(wave.y));
-      // The wall stands across its direction of travel.
-      group.rotation.y = -wave.angle;
-      const halfWidth = wave.width * scale;
-      // Rears up as it starts, then flattens out as it spends itself, which is
-      // what makes a wave read as breaking rather than as a sliding box. The
-      // height multiplier is what sells it as a tsunami: at 1m the wall was
-      // shorter than the fighters and vanished behind them.
-      const rise = Math.min(1, wave.progress * 5);
-      const spend = 1 - Math.max(0, wave.progress - 0.7) / 0.3;
-      group.scale.set(1, Math.max(0.35, rise * spend) * WAVE_HEIGHT, halfWidth);
-      tintGroup(group, 'rim', wave.mine ? OWNER_RIM.mine : OWNER_RIM.theirs);
+    // Churn around the rim: the disc alone is a decal, and a decal on water
+    // reads as a sticker. Blocks rising and falling at its edge give it a
+    // surface that is being disturbed.
+    //
+    // Every third block takes the owner colour instead of the flavour's. For a
+    // zone this is the most consequential cue in the game and not merely a
+    // nicety: a zone only ever damages the enemy of whoever cast it, so "is it
+    // mine?" is literally "does this hurt me?". The flavour still owns the
+    // fill and the froth, because *what kind of hazard* has to survive the
+    // answer — a green puddle ringed in red is theirs, ringed in cyan is
+    // yours, and both are still obviously poison.
+    const ownerTint = zone.mine ? OWNER_RIM.mine : OWNER_RIM.theirs;
+
+    // An outline in the owner's colour, drawn around the patch.
+    //
+    // Tinting a few of the churn blocks was not enough on its own: against a
+    // bright green slick the accents read as more slick. A continuous ring is
+    // unambiguous, and it reuses the language the mine and geyser telegraphs
+    // already established — a coloured ring on the water means "this circle
+    // matters".
+    const outline = this.rings.next();
+    if (outline) {
+      const material = outline.material as MeshBasicMaterial;
+      material.color.set(ownerTint);
+      material.opacity = 0.75 * fade;
+      outline.position.set(cx, Y.warn, cz);
+      outline.scale.setScalar(radius * 1.06);
+      outline.rotation.z = this.clock * skin.spin * 0.4;
     }
-    this.waves.end();
 
-    /* --- Beams ----------------------------------------------------------- */
-    this.beams.begin();
-    for (const beam of effects.beams) {
-      const group = this.beams.next();
-      if (!group) break;
-      group.position.set(this.wx(beam.x), Y.beam, this.wx(beam.y));
-      group.rotation.y = -beam.angle;
-      const length = beam.length * scale;
-      // Flickers on a fast sine so a sustained beam looks powered rather than
-      // painted on. Never reaches zero — a beam that blinks out reads as over.
-      const flicker = 0.82 + 0.18 * Math.sin(this.clock * 40);
-      group.scale.set(length, flicker, beam.width * scale * 2 * flicker);
-      tintGroup(group, 'core', beam.mine ? BEAM_CORE : '#ffdede');
+    const rimCount = 14;
+    for (let i = 0; i < rimCount; i += 1) {
+      const a = (i / rimCount) * Math.PI * 2 + this.clock * skin.spin * 0.5;
+      const bob = Math.sin(this.clock * 3.4 + i * 1.7 + seed) * 0.5 + 0.5;
+      const h = (0.12 + bob * 0.22) * fade;
+      if (h < 0.04) continue;
+      const r = radius * (0.9 + hash01(seed + i) * 0.12);
+      this.chunks.add(
+        cx + Math.cos(a) * r,
+        h * 0.5,
+        cz + Math.sin(a) * r,
+        0.3,
+        h,
+        0.3,
+        i % 3 === 0 ? ownerTint : skin.froth,
+        a,
+      );
     }
-    this.beams.end();
 
-    /* --- Mines ----------------------------------------------------------- */
-    this.mines.begin();
-    for (const item of effects.mines) {
-      const group = this.mines.next();
-      if (!group) break;
-      group.position.set(this.wx(item.x), Y.mine, this.wx(item.y));
-      // The warning ring closes in on the charge as the fuse burns down — a
-      // countdown you read spatially instead of as a number.
-      const ring = group.getObjectByName('ring');
-      if (ring) {
-        const radius = item.radius * scale * (1 - item.progress * 0.72);
-        ring.scale.setScalar(Math.max(0.1, radius));
-        ring.rotation.z = this.clock * 1.4;
-      }
-      // Blinks faster the closer it gets, and is solid for the last moment.
-      const rate = 3 + item.progress * 22;
-      const blink = item.progress > 0.92 ? 1 : Math.sin(this.clock * rate) > 0 ? 1 : 0.25;
-      tintGroup(group, 'ring', item.mine ? OWNER_RIM.mine : WARN_COLOUR, blink);
+    // Bubbles breaking the surface, on independent loops.
+    const bubbles = 9;
+    for (let i = 0; i < bubbles; i += 1) {
+      const phase = (this.clock * (0.5 + hash01(seed + i * 7) * 0.5) + hash01(seed + i)) % 1;
+      const a = hash01(seed + i * 3) * Math.PI * 2;
+      const r = radius * 0.2 + hash01(seed + i * 11) * radius * 0.6;
+      const size = (0.12 + hash01(seed + i * 5) * 0.14) * (1 - phase) * fade;
+      if (size < 0.03) continue;
+      this.chunks.add(
+        cx + Math.cos(a) * r,
+        0.08 + phase * 0.55,
+        cz + Math.sin(a) * r,
+        size,
+        size,
+        size,
+        skin.froth,
+      );
     }
-    this.mines.end();
 
-    /* --- Geysers --------------------------------------------------------- */
-    this.geysers.begin();
-    for (const geyser of effects.geysers) {
-      const group = this.geysers.next();
-      if (!group) break;
-      group.position.set(this.wx(geyser.x), 0, this.wx(geyser.y));
-      const radius = geyser.radius * scale;
-
-      const warn = group.getObjectByName('warn');
-      const column = group.getObjectByName('column');
-      if (warn) {
-        // Visible only while arming, and filling as it does.
-        warn.visible = !geyser.erupting;
-        warn.scale.setScalar(radius * (0.35 + 0.65 * geyser.progress));
-        warn.rotation.z = -this.clock * 2;
-      }
-      const cap = group.getObjectByName('cap');
-      if (column) {
-        column.visible = geyser.erupting;
-        if (cap) cap.visible = geyser.erupting;
-        if (geyser.erupting) {
-          // Shoots up fast, then falls back — the eruption is over in under
-          // half a second, so the rise has to be near-instant to be seen.
-          const rise = Math.min(1, geyser.progress * 4);
-          const fall = 1 - Math.max(0, geyser.progress - 0.55) / 0.45;
-          // Narrower than its damage radius: a column as wide as the ring
-          // filled the screen and hid the fight behind it. The ring is what
-          // states the actual danger area; the column only has to be seen.
-          const bore = radius * 0.55;
-          const height = Math.max(0.05, rise * fall) * GEYSER_HEIGHT;
-          column.scale.set(bore, height, bore);
-          if (cap) {
-            cap.scale.set(bore * 1.5, 1, bore * 1.5);
-            cap.position.y = height;
-          }
+    // A whirlpool is a hole, so it gets a funnel — but the funnel has to be
+    // built *upward*. The first attempt stepped the rings down below y=0 to
+    // dig into the pool, and the water plane is opaque: the entire funnel was
+    // hidden under it and the whirlpool was a dark circle again. Instead the
+    // rim is thrown up into a wall and each ring inward sits lower and darker,
+    // which reads as a bowl from every camera angle the player can reach.
+    if (zone.flavour === 'whirlpool') {
+      const rings = 3;
+      const perRing = 14;
+      for (let r = 0; r < rings; r += 1) {
+        const t = r / (rings - 1); // 0 at the rim, 1 at the centre.
+        const ringRadius = radius * (1 - t * 0.62);
+        const wallHeight = (0.62 - t * 0.42) * fade;
+        if (wallHeight < 0.05) continue;
+        // Deeper rings turn faster, which is what a real vortex does and what
+        // makes the shape read as rotating rather than merely round.
+        const spin = this.clock * (1.8 + r * 1.9) * (zone.mine ? 1 : -1);
+        for (let i = 0; i < perRing; i += 1) {
+          const a = (i / perRing) * Math.PI * 2 + spin;
+          const lean = Math.sin(this.clock * 4 + i) * 0.06;
+          this.chunks.add(
+            cx + Math.cos(a) * ringRadius,
+            wallHeight * 0.5 + lean,
+            cz + Math.sin(a) * ringRadius,
+            0.36,
+            wallHeight,
+            0.36,
+            r === 0 ? skin.rim : r === 1 ? skin.fill : WAVE_DEEP,
+            a,
+          );
         }
       }
-      tintGroup(group, 'warn', geyser.mine ? OWNER_RIM.mine : WARN_COLOUR);
     }
-    this.geysers.end();
+  }
+
+  /* --- Waves ------------------------------------------------------------- */
+
+  /**
+   * A breaking wave, built as a row of crest columns.
+   *
+   * The shape that matters: tall through the middle and tapering at the ends,
+   * with the face sloping back, a white lip overhanging the front, and spray
+   * thrown off the top. A single stretched box has none of that and is why the
+   * first pass looked like a wall sliding across the pool.
+   */
+  private drawWave(wave: SceneWave): void {
+    const cx = this.wx(wave.x);
+    const cz = this.wx(wave.y);
+    const seed = seedOf(wave.id);
+
+    // Local axes: `f` is where the wave is going, `a` runs along its face.
+    const fx = Math.cos(wave.angle);
+    const fz = Math.sin(wave.angle);
+    const ax = -Math.sin(wave.angle);
+    const az = Math.cos(wave.angle);
+    const yaw = -wave.angle;
+
+    // Rears up quickly, holds, then collapses as it spends itself.
+    const rise = Math.min(1, wave.progress * 6);
+    const spend = 1 - Math.max(0, wave.progress - 0.68) / 0.32;
+    const envelope = Math.max(0, Math.min(rise, spend));
+    if (envelope <= 0.01) return;
+
+    const halfWidth = wave.width * this.arena;
+    const segWidth = (halfWidth * 2) / WAVE_SEGMENTS;
+
+    // Ownership rides on the foam. Everything else about a wave is water and
+    // has to stay water-coloured, but foam is the one part that can carry a
+    // tint without looking wrong — and something this large crossing the arena
+    // is exactly when "whose is it?" matters most.
+    const foam = wave.mine ? FOAM : FOAM_HOSTILE;
+    const crestColour = wave.mine ? WAVE_CREST : WAVE_CREST_HOSTILE;
+
+    for (let i = 0; i < WAVE_SEGMENTS; i += 1) {
+      const u = (i + 0.5) / WAVE_SEGMENTS;
+      const lateral = (u - 0.5) * halfWidth * 2;
+
+      // Crown profile: a flattened sine, so the middle is a broad mass rather
+      // than a single peak, and the ends still taper into the water.
+      const crown = Math.pow(Math.sin(Math.PI * u), 0.55);
+      // Undulation travelling along the crest, so no two columns are level.
+      const ripple = 0.84 + 0.16 * Math.sin(u * 11 + this.clock * 7 + seed);
+      const height = WAVE_HEIGHT * crown * ripple * envelope;
+      if (height < 0.12) continue;
+
+      const bx = cx + ax * lateral;
+      const bz = cz + az * lateral;
+
+      // Back of the wave. Both sides get a full treatment on purpose: a wave
+      // you cast travels away from you, so the *back* is the side you look at
+      // for most of its life, and an earlier pass that only detailed the face
+      // left the caster watching a flat navy hill.
+      //
+      // Split into a shadowed base and a lighter upper mass, so the back reads
+      // as a curved surface rather than one extruded shape.
+      this.chunks.add(
+        bx - fx * 0.55,
+        height * 0.24,
+        bz - fz * 0.55,
+        0.7,
+        height * 0.48,
+        segWidth * 0.98,
+        WAVE_DEEP,
+        yaw,
+      );
+      this.chunks.add(
+        bx - fx * 0.52,
+        height * 0.62,
+        bz - fz * 0.52,
+        0.66,
+        height * 0.4,
+        segWidth * 0.96,
+        hash01(seed + i * 3) > 0.5 ? WAVE_BODY : WAVE_FACE,
+        yaw,
+      );
+      // Lit strip along the back's shoulder, catching the sky.
+      this.chunks.add(
+        bx - fx * 0.5,
+        height * 0.84,
+        bz - fz * 0.5,
+        0.6,
+        height * 0.16,
+        segWidth * 0.94,
+        WAVE_LIT,
+        yaw,
+      );
+      // Foam tumbling down the back of the break, thickest where the wave is
+      // tallest and therefore breaking hardest.
+      if (crown > 0.4 && i % 2 === 0) {
+        const n = seed + i * 23;
+        const spill = (this.clock * 0.7 + hash01(n)) % 1;
+        const size = 0.3 * (1 - spill * 0.6);
+        this.chunks.add(
+          bx - fx * (0.7 + spill * 0.5),
+          height * (0.86 - spill * 0.55),
+          bz - fz * (0.7 + spill * 0.5),
+          size,
+          size,
+          segWidth * 0.6,
+          foam,
+          yaw,
+        );
+      }
+
+      // The face, stepped forward and slightly shorter, so the wall is not one
+      // flat plane from the front.
+      this.chunks.add(
+        bx,
+        height * 0.5,
+        bz,
+        0.5,
+        height,
+        segWidth * 0.94,
+        // Tone picked by hash, not by column parity. Alternating every other
+        // column produced evenly spaced vertical stripes down the wall — the
+        // wave read as a picket fence, which is worse than the flat slab it
+        // replaced. Irregular placement is what makes it look like water.
+        hash01(seed + i * 7) > 0.5 ? WAVE_BODY : WAVE_FACE,
+        yaw,
+      );
+
+      // Flow bands sliding down the wall. Deliberately wider than one column
+      // and only emitted from every third, so they cut *across* the segment
+      // grid: a band per column would just be more vertical striping.
+      if (i % 3 === 1) {
+        const n = seed + i * 17;
+        const slide = (this.clock * 0.5 + hash01(n)) % 1;
+        const sy = height * (0.22 + slide * 0.5);
+        if (sy < height - 0.25) {
+          this.chunks.add(
+            bx + fx * 0.1,
+            sy,
+            bz + fz * 0.1,
+            0.56,
+            height * 0.1,
+            segWidth * (1.8 + hash01(n + 1) * 1.2),
+            WAVE_FACE,
+            yaw,
+          );
+        }
+      }
+
+      // Where the wall meets the pool: a bright churn line, so the wave sits
+      // *in* the water instead of on top of it.
+      this.chunks.add(
+        bx + fx * 0.3,
+        0.1,
+        bz + fz * 0.3,
+        0.5,
+        0.2 + 0.1 * Math.sin(this.clock * 8 + i),
+        segWidth * 0.96,
+        foam,
+        yaw,
+      );
+
+      // A lit band just under the crest, where the sun catches the shoulder of
+      // the wave. This is what stops the mass reading as one silhouette: with
+      // only body tones the wall was a dark shape with a white hat.
+      const shoulder = 0.3 + 0.12 * hash01(seed + i * 5);
+      this.chunks.add(
+        bx + fx * 0.06,
+        height - shoulder * 0.5,
+        bz + fz * 0.06,
+        0.58,
+        shoulder,
+        segWidth * 0.96,
+        WAVE_LIT,
+        yaw,
+      );
+
+      // Crest cap.
+      const crestH = 0.26 + 0.1 * hash01(seed + i);
+      this.chunks.add(
+        bx + fx * 0.12,
+        height + crestH * 0.4,
+        bz + fz * 0.12,
+        0.62,
+        crestH,
+        segWidth * 1.02,
+        crestColour,
+        yaw,
+      );
+
+      // The lip: an overhang thrown ahead of the crest where the wave is tall,
+      // which is what makes it read as breaking rather than merely standing.
+      if (crown > 0.45) {
+        const reach = 0.42 + 0.5 * crown;
+        this.chunks.add(
+          bx + fx * reach,
+          height - 0.12,
+          bz + fz * reach,
+          0.42,
+          0.3,
+          segWidth * 0.9,
+          foam,
+          yaw,
+        );
+      }
+
+      // Spray off the top. Each droplet is on its own loop so the crest is
+      // constantly shedding water rather than pulsing in unison.
+      if (crown > 0.3 && i % 2 === 0) {
+        for (let s = 0; s < 2; s += 1) {
+          const n = seed + i * 13 + s * 71;
+          const phase = (this.clock * (1.1 + hash01(n) * 0.9) + hash01(n + 1)) % 1;
+          const size = 0.16 * (1 - phase);
+          if (size < 0.03) continue;
+          // Thrown forward and up, arcing over as it goes.
+          const forward = 0.3 + phase * 1.5;
+          const lift = height + phase * 1.3 - phase * phase * 1.5;
+          this.chunks.add(
+            bx + fx * forward + ax * hash11(n + 2) * 0.4,
+            Math.max(0.05, lift),
+            bz + fz * forward + az * hash11(n + 2) * 0.4,
+            size,
+            size,
+            size,
+            foam,
+          );
+        }
+      }
+
+      // Foam left on the water behind the wave.
+      if (i % 2 === 1) {
+        const trail = 1.2 + hash01(seed + i * 5) * 0.9;
+        this.chunks.add(
+          bx - fx * trail,
+          0.06,
+          bz - fz * trail,
+          0.5,
+          0.12,
+          segWidth * 0.8,
+          foam,
+          yaw,
+        );
+      }
+    }
+  }
+
+  /* --- Beams ------------------------------------------------------------- */
+
+  private drawBeam(beam: SceneBeam): void {
+    const ox = this.wx(beam.x);
+    const oz = this.wx(beam.y);
+    const fx = Math.cos(beam.angle);
+    const fz = Math.sin(beam.angle);
+    const yaw = -beam.angle;
+    const seed = seedOf(beam.id);
+    const length = beam.length * this.arena;
+    // Deliberately narrower than the hitbox it represents. `beam.width` is a
+    // half-width the engine tests against, so drawing the full 1.6m as solid
+    // geometry put a slab across the lower half of the screen — the caster
+    // stands at the camera, so a beam is always seen from its own nozzle.
+    // A lance should look like a lance; the damage stays as wide as it was.
+    const width = beam.width * this.arena * 1.15;
+    const segLength = length / BEAM_SEGMENTS;
+    const height = 0.9;
+    // A beam is the fastest-appearing effect in the game and two can be live at
+    // once, so the core carries the owner tint the same way wave foam does.
+    const core = beam.mine ? BEAM_CORE : FOAM_HOSTILE;
+
+    for (let i = 0; i < BEAM_SEGMENTS; i += 1) {
+      const t = (i + 0.5) / BEAM_SEGMENTS;
+      const distance = t * length;
+      const px = ox + fx * distance;
+      const pz = oz + fz * distance;
+
+      // The jet loses coherence with distance and boils along its length, so
+      // the beam is never a uniform bar.
+      const boil = 0.78 + 0.22 * Math.sin(t * 22 - this.clock * 26 + seed);
+      const spread = 1 + t * 0.5;
+      // Horizontal width and vertical thickness are separate numbers. Driving
+      // both from the card's `width` made a 1.6m-wide lance also 1.6m tall —
+      // a white cube parked in front of the camera rather than a jet.
+      const w = width * spread * boil;
+      const thickness = BEAM_THICKNESS * boil;
+
+      this.chunks.add(px, height, pz, segLength * 0.95, thickness, w, BEAM_EDGE, yaw);
+      this.chunks.add(
+        px,
+        height,
+        pz,
+        segLength * 0.95,
+        thickness * 0.5,
+        w * 0.45,
+        core,
+        yaw,
+      );
+
+      // Bright slugs of water running down the beam, which is what makes it
+      // read as pressurised flow rather than a light.
+      const pulse = (t + this.clock * 1.6) % 1;
+      if (pulse < 0.12) {
+        this.chunks.add(px, height, pz, segLength * 1.1, thickness * 1.3, w * 1.15, core, yaw);
+      }
+    }
+
+    // Muzzle burst at the nozzle.
+    for (let i = 0; i < 5; i += 1) {
+      const n = seed + i * 17;
+      const phase = (this.clock * 3 + hash01(n)) % 1;
+      const size = 0.26 * (1 - phase);
+      const out = 0.3 + phase * 0.8;
+      this.chunks.add(
+        ox + fx * 0.3 + hash11(n + 1) * out * 0.6,
+        height + hash11(n + 2) * 0.4,
+        oz + fz * 0.3 + hash11(n + 3) * out * 0.6,
+        size,
+        size,
+        size,
+        core,
+      );
+    }
+
+    // Where it lands: spray kicking back off the far end.
+    for (let i = 0; i < 6; i += 1) {
+      const n = seed + 400 + i * 23;
+      const phase = (this.clock * 2.4 + hash01(n)) % 1;
+      const size = 0.24 * (1 - phase);
+      if (size < 0.04) continue;
+      const back = phase * 1.2;
+      this.chunks.add(
+        ox + fx * (length - back) + hash11(n + 1) * 0.7,
+        Math.max(0.08, height + phase * 0.9 - phase * phase * 1.4),
+        oz + fz * (length - back) + hash11(n + 2) * 0.7,
+        size,
+        size,
+        size,
+        core,
+      );
+    }
+  }
+
+  /* --- Mines ------------------------------------------------------------- */
+
+  private drawMine(item: SceneMine): void {
+    const cx = this.wx(item.x);
+    const cz = this.wx(item.y);
+    const radius = item.radius * this.arena;
+    const seed = seedOf(item.id);
+
+    // The charge itself: a body with fins, so it is an object rather than a
+    // cube sitting on the water.
+    const bob = Math.sin(this.clock * 2.2 + seed) * 0.05;
+    this.chunks.add(cx, Y.mine + bob, cz, 0.42, 0.42, 0.42, MINE_BODY);
+    for (let i = 0; i < 4; i += 1) {
+      const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
+      this.chunks.add(
+        cx + Math.cos(a) * 0.3,
+        Y.mine + bob,
+        cz + Math.sin(a) * 0.3,
+        0.22,
+        0.16,
+        0.22,
+        MINE_TRIM,
+        a,
+      );
+    }
+    // A blinking eye on top, faster as the fuse burns down.
+    const rate = 3 + item.progress * 22;
+    const lit = item.progress > 0.92 || Math.sin(this.clock * rate) > 0;
+    this.chunks.add(cx, Y.mine + bob + 0.26, cz, 0.16, 0.1, 0.16, lit ? MINE_TRIM : MINE_BODY);
+
+    // Bubbles trailing up off it, so a sunk charge is visible from above.
+    for (let i = 0; i < 4; i += 1) {
+      const n = seed + i * 29;
+      const phase = (this.clock * 0.8 + hash01(n)) % 1;
+      const size = 0.12 * (1 - phase);
+      if (size < 0.03) continue;
+      this.chunks.add(
+        cx + hash11(n + 1) * 0.3,
+        0.2 + phase * 0.7,
+        cz + hash11(n + 2) * 0.3,
+        size,
+        size,
+        size,
+        GEYSER_FOAM,
+      );
+    }
+
+    // The warning ring closes in as the fuse burns: a countdown read spatially
+    // rather than as a number.
+    const ring = this.rings.next();
+    if (ring) {
+      const material = ring.material as MeshBasicMaterial;
+      material.color.set(item.mine ? OWNER_RIM.mine : WARN_COLOUR);
+      material.opacity = lit ? 0.9 : 0.4;
+      ring.position.set(cx, Y.warn, cz);
+      ring.scale.setScalar(Math.max(0.1, radius * (1 - item.progress * 0.7)));
+      ring.rotation.z = this.clock * 1.4;
+    }
+  }
+
+  /* --- Geysers ----------------------------------------------------------- */
+
+  private drawGeyser(geyser: SceneGeyser): void {
+    const cx = this.wx(geyser.x);
+    const cz = this.wx(geyser.y);
+    const radius = geyser.radius * this.arena;
+    const seed = seedOf(geyser.id);
+
+    if (!geyser.erupting) {
+      // Arming: a filling ring plus the water starting to boil inside it, so
+      // the telegraph is visible even with the ring edge-on to the camera.
+      const ring = this.rings.next();
+      if (ring) {
+        const material = ring.material as MeshBasicMaterial;
+        material.color.set(geyser.mine ? OWNER_RIM.mine : WARN_COLOUR);
+        material.opacity = 0.85;
+        ring.position.set(cx, Y.warn, cz);
+        ring.scale.setScalar(radius * (0.35 + 0.65 * geyser.progress));
+        ring.rotation.z = -this.clock * 2;
+      }
+      const boil = 5;
+      for (let i = 0; i < boil; i += 1) {
+        const n = seed + i * 19;
+        const a = hash01(n) * Math.PI * 2 + this.clock * 2;
+        const r = radius * 0.5 * hash01(n + 1);
+        const h = (0.1 + 0.2 * Math.abs(Math.sin(this.clock * 6 + i))) * geyser.progress;
+        this.chunks.add(
+          cx + Math.cos(a) * r,
+          h * 0.5,
+          cz + Math.sin(a) * r,
+          0.24,
+          h,
+          0.24,
+          GEYSER_FOAM,
+        );
+      }
+      return;
+    }
+
+    // Erupting: a turbulent column, not a cylinder. Each slice is narrower
+    // than the one below and offset slightly, so the shaft leans and frays as
+    // it climbs.
+    const rise = Math.min(1, geyser.progress * 4);
+    const fall = 1 - Math.max(0, geyser.progress - 0.55) / 0.45;
+    const height = Math.max(0.05, rise * fall) * GEYSER_HEIGHT;
+    // Narrower than its damage radius: a column as wide as the ring hid the
+    // fight behind it. The ring states the danger area; the column only has to
+    // be seen.
+    const bore = radius * 0.5;
+    const sliceH = height / GEYSER_STACK;
+
+    for (let i = 0; i < GEYSER_STACK; i += 1) {
+      const t = i / (GEYSER_STACK - 1);
+      const n = seed + i * 37;
+      // The jet is thinner and more broken the higher it gets, and each slice
+      // is offset from the one below. A constant taper looked like a moulded
+      // cone; the variance is what makes it read as water under pressure.
+      const w = bore * (1 - t * 0.5) * (0.62 + hash01(n) * 0.8);
+      // Slices drift upward through the column rather than sitting still, so
+      // the shaft has visible flow instead of only a rising outline.
+      const flow = (this.clock * 2.2 + hash01(n + 5)) % 1;
+      const lean = hash11(n + 1) * 0.3 * t * bore;
+      const sway = Math.sin(this.clock * 5 + i * 0.8 + seed) * 0.14 * t;
+      this.chunks.add(
+        cx + lean + sway,
+        t * height + sliceH * 0.5,
+        cz + hash11(n + 2) * 0.3 * t * bore,
+        w,
+        sliceH * 1.05,
+        w,
+        // Banded rather than a single colour: foam is thrown where the column
+        // is breaking up, which is at the top and wherever a slug is passing.
+        t > 0.7 || flow > 0.72 ? GEYSER_FOAM : GEYSER_WATER,
+      );
+
+      // Water shedding off the sides of the shaft as it climbs.
+      if (i % 2 === 1) {
+        const m = n + 900;
+        const a = hash01(m) * Math.PI * 2 + this.clock * 3;
+        const shed = 0.2 + hash01(m + 1) * 0.5;
+        const size = 0.16 * (1 - t) * fall;
+        if (size > 0.03) {
+          this.chunks.add(
+            cx + Math.cos(a) * bore * (0.7 + shed),
+            t * height,
+            cz + Math.sin(a) * bore * (0.7 + shed),
+            size,
+            size,
+            size,
+            GEYSER_FOAM,
+          );
+        }
+      }
+    }
+
+    // The plume at the top, thrown outward and falling back.
+    for (let i = 0; i < 8; i += 1) {
+      const n = seed + 200 + i * 41;
+      const a = (i / 8) * Math.PI * 2 + hash01(n) * 0.6;
+      const phase = (this.clock * 1.6 + hash01(n + 1)) % 1;
+      const out = phase * bore * 3;
+      const size = 0.28 * (1 - phase) * fall;
+      if (size < 0.04) continue;
+      this.chunks.add(
+        cx + Math.cos(a) * out,
+        Math.max(0.06, height + phase * 0.8 - phase * phase * 2.2),
+        cz + Math.sin(a) * out,
+        size,
+        size,
+        size,
+        GEYSER_FOAM,
+      );
+    }
+
+    // Displaced water shoved outward at the base.
+    for (let i = 0; i < 8; i += 1) {
+      const a = (i / 8) * Math.PI * 2;
+      const r = bore * (1.4 + rise * 0.8);
+      this.chunks.add(
+        cx + Math.cos(a) * r,
+        0.1,
+        cz + Math.sin(a) * r,
+        0.34,
+        0.2 * fall,
+        0.34,
+        GEYSER_FOAM,
+        a,
+      );
+    }
   }
 
   dispose(): void {
-    this.zones.dispose();
-    this.waves.dispose();
-    this.beams.dispose();
-    this.mines.dispose();
-    this.geysers.dispose();
+    this.discs.dispose();
+    this.rings.dispose();
+    this.chunks.dispose();
+    this.group.remove(this.chunks.mesh);
     for (const texture of Object.values(this.zoneTextures)) texture.dispose();
   }
-}
-
-/* --- Mesh builders ---------------------------------------------------------- */
-
-/** Recolours one named child of a pooled group. */
-function tintGroup(group: Group, name: string, colour: string, opacity?: number): void {
-  const node = group.getObjectByName(name) as Mesh | undefined;
-  if (!node) return;
-  const material = node.material as MeshBasicMaterial;
-  material.color.set(colour);
-  if (opacity !== undefined) {
-    material.opacity = opacity;
-    material.transparent = opacity < 1;
-  }
-}
-
-/**
- * A wave is a body plus a crest cap. Built around a unit half-width on Z and a
- * unit height on Y so the layer can scale it per instance, with the body's
- * origin at its base so scaling grows it upward rather than through the floor.
- */
-function makeWaveMesh(): Group {
-  const group = new Group();
-
-  // Opaque and darker than the pool. The first pass used a translucent
-  // mid-blue, which at distance blended into the water it was crossing and
-  // read as a lighting change rather than a wall — for the ability whose whole
-  // counterplay is seeing it coming and diving, that is the one unacceptable
-  // failure.
-  const body = new Mesh(
-    new BoxGeometry(0.7, 1, 2),
-    new MeshBasicMaterial({ color: WAVE_BODY }),
-  );
-  body.position.y = 0.5;
-  body.name = 'body';
-  group.add(body);
-
-  // A dark trough at the base, so the wall is bounded below as well as above
-  // and does not appear to melt into the surface.
-  const trough = new Mesh(
-    new BoxGeometry(0.78, 0.18, 2),
-    new MeshBasicMaterial({ color: WAVE_TROUGH }),
-  );
-  trough.position.y = 0.09;
-  trough.name = 'trough';
-  group.add(trough);
-
-  // The white lip that makes it read as breaking water rather than a slab.
-  const crest = new Mesh(
-    new BoxGeometry(0.95, 0.3, 2),
-    new MeshBasicMaterial({ color: WAVE_CREST }),
-  );
-  crest.position.y = 1.02;
-  crest.name = 'rim';
-  group.add(crest);
-
-  // Spray thrown forward off the crest, breaking the silhouette so it is not a
-  // perfect rectangle from any angle.
-  const spray = new Mesh(
-    new BoxGeometry(0.3, 0.16, 1.6),
-    new MeshBasicMaterial({ color: WAVE_CREST, transparent: true, opacity: 0.75 }),
-  );
-  spray.position.set(0.5, 1.2, 0);
-  spray.name = 'spray';
-  group.add(spray);
-
-  return group;
-}
-
-/** A beam: bright core inside a wider, darker sheath. */
-function makeBeamMesh(): Group {
-  const group = new Group();
-
-  const sheath = new Mesh(
-    new BoxGeometry(1, 0.42, 1),
-    new MeshBasicMaterial({ color: BEAM_EDGE, transparent: true, opacity: 0.7 }),
-  );
-  // Origin at the caster: shifting the box half its length forward means
-  // scaling X extends it away from them rather than through them.
-  sheath.position.x = 0.5;
-  sheath.name = 'sheath';
-  group.add(sheath);
-
-  const core = new Mesh(new BoxGeometry(1, 0.2, 0.45), new MeshBasicMaterial({ color: BEAM_CORE }));
-  core.position.x = 0.5;
-  core.name = 'core';
-  group.add(core);
-
-  return group;
-}
-
-/** A mine: a dark charge under a closing warning ring. */
-function makeMineMesh(): Group {
-  const group = new Group();
-
-  const body = new Mesh(new BoxGeometry(0.4, 0.4, 0.4), new MeshBasicMaterial({ color: MINE_BODY }));
-  body.name = 'body';
-  group.add(body);
-
-  const ring = new Mesh(
-    new RingGeometry(0.82, 1, 20),
-    new MeshBasicMaterial({ color: WARN_COLOUR, transparent: true, depthWrite: false }),
-  );
-  ring.rotation.x = -Math.PI / 2;
-  ring.position.y = -Y.mine + Y.warn;
-  ring.name = 'ring';
-  group.add(ring);
-
-  return group;
-}
-
-/** A geyser: a warning ring while arming, a column once it fires. */
-function makeGeyserMesh(): Group {
-  const group = new Group();
-
-  const warn = new Mesh(
-    new RingGeometry(0.6, 1, 20),
-    new MeshBasicMaterial({ color: WARN_COLOUR, transparent: true, opacity: 0.85, depthWrite: false }),
-  );
-  warn.rotation.x = -Math.PI / 2;
-  warn.position.y = Y.warn;
-  warn.name = 'warn';
-  group.add(warn);
-
-  // The geometry is shifted so its *base* sits at the mesh origin. The column
-  // is scaled directly rather than through its group (its radius and height are
-  // driven independently), and a centre-origin box would have grown downward
-  // through the pool floor as much as upward.
-  const columnGeometry = new BoxGeometry(1, 1, 1);
-  columnGeometry.translate(0, 0.5, 0);
-  const column = new Mesh(
-    columnGeometry,
-    new MeshBasicMaterial({ color: GEYSER_COLUMN, transparent: true, opacity: 0.9 }),
-  );
-  column.name = 'column';
-  group.add(column);
-
-  // Foam capping the column. Deliberately a *sibling* of the shaft, not a
-  // child: the shaft is scaled non-uniformly (thin, and several metres tall),
-  // and a child would inherit that vertical stretch — the cap became a slab
-  // hanging over the pool a metre thick. As a sibling it keeps its own
-  // proportions and is simply placed at whatever height the column reached.
-  const cap = new Mesh(new BoxGeometry(1, 0.26, 1), new MeshBasicMaterial({ color: '#ffffff' }));
-  cap.name = 'cap';
-  group.add(cap);
-
-  return group;
 }

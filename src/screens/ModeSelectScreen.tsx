@@ -4,8 +4,15 @@ import { ScreenFrame } from '@/components/ui/ScreenFrame';
 import { PixelButton } from '@/components/ui/PixelButton';
 import { PixelBadge } from '@/components/ui/PixelBadge';
 import { PixelInput } from '@/components/ui/PixelInput';
+import type { BotDifficulty } from '@/types/game';
+import {
+  BOT_DIFFICULTY_ORDER,
+  BOT_PROFILES,
+  botProfile,
+} from '@/game/engine/difficulty';
 import { useNavigation } from '@/state/NavigationContext';
 import { usePlayer } from '@/state/PlayerContext';
+import { useSettings } from '@/state/SettingsContext';
 import { generateRoomCode, isValidRoomCode, normaliseRoomCode } from '@/lib/format';
 import { cn } from '@/lib/cn';
 
@@ -16,6 +23,8 @@ import { cn } from '@/lib/cn';
 export function ModeSelectScreen() {
   const { navigate, back } = useNavigation();
   const { profile } = usePlayer();
+  const { settings, update } = useSettings();
+  const bot = botProfile(settings.botDifficulty);
   const [joinCode, setJoinCode] = useState('');
   const [joinError, setJoinError] = useState(false);
 
@@ -51,16 +60,27 @@ export function ModeSelectScreen() {
               accent="surf"
               badge={{ label: 'Offline', tone: 'neutral' }}
               blurb="Practice against the AI. Nothing is staked."
-              detail="Bots approach, splash, dive when hurt and fire their ultimate once it charges."
+              detail={bot.blurb}
               delayMs={0}
               art={<BotArt />}
+              extra={
+                <DifficultyPicker
+                  value={settings.botDifficulty}
+                  onChange={(value) => update('botDifficulty', value)}
+                />
+              }
               action={
                 <PixelButton
                   variant="primary"
                   size="lg"
                   icon="▶"
                   fullWidth
-                  onClick={() => navigate('mapSelect', { mode: 'localBots' })}
+                  onClick={() =>
+                    navigate('mapSelect', {
+                      mode: 'localBots',
+                      difficulty: settings.botDifficulty,
+                    })
+                  }
                 >
                   Play now
                 </PixelButton>
@@ -164,6 +184,7 @@ function ModeCard({
   blurb,
   detail,
   art,
+  extra,
   action,
   delayMs,
 }: {
@@ -174,6 +195,8 @@ function ModeCard({
   blurb: string;
   detail: string;
   art: ReactNode;
+  /** Optional controls between the copy and the action, e.g. a difficulty picker. */
+  extra?: ReactNode;
   action: ReactNode;
   delayMs: number;
 }) {
@@ -202,9 +225,64 @@ function ModeCard({
         </h2>
         <p className="text-mist/75 text-[11px] leading-snug">{blurb}</p>
         <p className="text-mist/45 text-[10px] leading-snug">{detail}</p>
+        {extra}
         <div className="mt-auto pt-2">{action}</div>
       </div>
     </section>
+  );
+}
+
+/**
+ * The difficulty picker.
+ *
+ * Each option lists what actually changes rather than a vague adjective,
+ * because these are behaviour differences and the player has no other way to
+ * know that a Veteran will walk out of their poison while a Rookie stands in
+ * it. "Hard" tells you nothing; "dodges hazards" tells you what to expect.
+ */
+function DifficultyPicker({
+  value,
+  onChange,
+}: {
+  value: BotDifficulty;
+  onChange: (value: BotDifficulty) => void;
+}) {
+  const active = botProfile(value);
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className="text-mist/40 text-[9px] tracking-[0.16em] uppercase">Difficulty</span>
+      <div className="grid grid-cols-4 gap-1">
+        {BOT_DIFFICULTY_ORDER.map((id) => {
+          const selected = id === value;
+          return (
+            <button
+              key={id}
+              type="button"
+              aria-pressed={selected}
+              onClick={() => onChange(id)}
+              className={cn(
+                'pixel-border-thin px-1 py-1 text-[9px] font-bold tracking-[0.08em] uppercase',
+                'transition-transform duration-[90ms] ease-[steps(2,jump-none)] active:translate-y-[1px]',
+                'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foam',
+                selected ? 'bg-surf text-abyss' : 'bg-ocean/60 text-mist/70 hover:text-mist',
+              )}
+            >
+              {BOT_PROFILES[id].label}
+            </button>
+          );
+        })}
+      </div>
+      <ul className="flex flex-wrap gap-1">
+        {active.tells.map((tell) => (
+          <li
+            key={tell}
+            className="bg-abyss/60 text-mist/55 px-1.5 py-0.5 text-[9px] tracking-[0.06em]"
+          >
+            {tell}
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 

@@ -29,6 +29,17 @@ export type ScreenId =
 
 export type GameMode = 'localBots' | 'online' | 'privateRoom';
 
+/**
+ * Which bot a local match is fought against.
+ *
+ * The identifier lives here rather than beside the engine's profile table
+ * because it is a contract between blocks — routes carry it, settings persist
+ * it, the mode picker writes it and the engine reads it. What each one *does*
+ * (reaction time, aim error, whether it perceives hazards at all) stays in
+ * `game/engine/difficulty.ts`, which is behaviour and belongs with the bot.
+ */
+export type BotDifficulty = 'rookie' | 'standard' | 'veteran' | 'shark';
+
 export type TransitionKind = 'fade' | 'slideForward' | 'slideBack' | 'scale';
 
 /**
@@ -39,17 +50,19 @@ export interface MatchTarget {
   mode: GameMode;
   mapId: MapId;
   roomCode?: string;
+  /** Which bot to fight. Only meaningful for `localBots`. */
+  difficulty?: BotDifficulty;
 }
 
 /** Params accepted by each screen. Add an entry when adding a screen. */
 export interface RouteParams {
   mainMenu: undefined;
   modeSelect: undefined;
-  mapSelect: { mode: GameMode; roomCode?: string };
+  mapSelect: { mode: GameMode; roomCode?: string; difficulty?: BotDifficulty };
   deckSelect: { next: MatchTarget | null };
   matchmaking: { mapId: MapId };
   roomLobby: { roomCode: string; isHost: boolean };
-  match: { mode: GameMode; mapId: MapId; roomCode?: string };
+  match: { mode: GameMode; mapId: MapId; roomCode?: string; difficulty?: BotDifficulty };
   result: { mode: GameMode; mapId: MapId; outcome: MatchOutcome; roomCode?: string };
   shop: undefined;
   packPreview: { packId: string };
@@ -477,5 +490,7 @@ export interface GameSettings {
   /** Mirrors touch controls on the opposite side for left-handed players. */
   leftHandedControls: boolean;
   controlScheme: ControlScheme;
+  /** Remembered choice for bot matches, so the picker opens where you left it. */
+  botDifficulty: BotDifficulty;
   playerName: string;
 }

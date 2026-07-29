@@ -119,6 +119,24 @@ const CASES: Record<string, (t: number) => SceneEffects> = {
   },
 };
 
+// Ownership check: the same effect cast by each side, side by side. Added
+// after a review caught that the wave and beam rewrites had dropped the
+// owner tint entirely — a regression a single-effect screenshot cannot show.
+CASES.owners = (t) => ({
+  ...empty(),
+  waves: [
+    { id: 'wa', x: 0.3, y: 0.62 + ((t * 0.1) % 0.2), angle: Math.PI / 2, width: 0.11, progress: (t * 0.3) % 1, mine: true },
+    { id: 'wb', x: 0.7, y: 0.62 + ((t * 0.1) % 0.2), angle: Math.PI / 2, width: 0.11, progress: (t * 0.3) % 1, mine: false },
+  ],
+  // Near the camera and large, because the zone cue is a ring of small accent
+  // blocks: at thumbnail distance it is invisible either way, which defeats
+  // the point of a comparison shot.
+  zones: [
+    { id: 'za', flavour: 'poison', x: 0.3, y: 0.3, radius: 0.16, progress: 0.2, mine: true },
+    { id: 'zb', flavour: 'poison', x: 0.7, y: 0.3, radius: 0.16, progress: 0.2, mine: false },
+  ],
+});
+
 const requested = new URLSearchParams(location.search).get('case');
 const names = requested && CASES[requested] ? [requested] : Object.keys(CASES);
 
