@@ -4,11 +4,13 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <meta name="theme-color" content="#04121f" />
-    <!-- The production build inlines all JS and CSS into this file (see
-         vite.config.ts), so there are no separate assets that a cached copy of
-         this document could reference after they were replaced — the cause of a
-         recurring blank white page. These hints ask for a fresh copy anyway;
-         they are not load-bearing, since any cached version is a whole app. -->
+    <!-- The bundle is an external file with a *stable* name (see
+         vite.config.ts): a cached copy of this document always asks for
+         ./app.js, which always exists, so the hashed-filename 404 that caused
+         the original blank page cannot happen. Inlining it instead — the
+         previous fix — traded that bug for an engine limit on how much text
+         one script element may hold, which is the failure that came back.
+         These hints ask for a fresh copy anyway; they are not load-bearing. -->
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
@@ -51,6 +53,27 @@
             (event.violatedDirective || '?') + ' blocked ' + (event.blockedURI || '?')
           );
         });
+
+        // Resource load failures — the bundle 404ing, a network drop mid-fetch
+        // — do not bubble, so they are only visible on the capture phase and
+        // are invisible to the plain `error` handler below. This is the exact
+        // failure the very first blank page was: a cached index.html asking
+        // for a file a later deploy had replaced. Stable filenames should make
+        // it impossible now, but "should" is what the last three attempts all
+        // said, so it is worth reporting rather than assuming.
+        var resourceErrors = [];
+        window.addEventListener(
+          'error',
+          function (event) {
+            var target = event && event.target;
+            if (target && target !== window && target.tagName) {
+              resourceErrors.push(
+                target.tagName.toLowerCase() + ' failed: ' + (target.src || target.href || '?')
+              );
+            }
+          },
+          true
+        );
 
         window.addEventListener('error', function (event) {
           lastError = (event && event.message) || 'Unknown script error';
@@ -134,16 +157,25 @@
           var scriptCount = probe(function () {
             return String(document.getElementsByTagName('script').length);
           }, 'unknown');
-          // The single most direct check available without real devtools: is
-          // the app's code actually sitting in the DOM at its expected size,
-          // or did something between the server and this engine strip or
-          // truncate it before the engine ever got a chance to run it? A
-          // module script that never executes is indistinguishable, from
-          // every channel above, from one that was never really there.
-          var moduleScriptLength = probe(function () {
+          // Where the bundle was supposed to come from, and whether it
+          // arrived. This replaces a probe that measured the *inline* script's
+          // length, which was the right question while the whole app lived
+          // inside the tag — and is how the last failure was diagnosed: it
+          // reported 0 characters for a 945 kB inline script, proving the
+          // engine had discarded it. The bundle is external now, so the
+          // meaningful question is whether the file loaded.
+          var bundle = probe(function () {
             var el = document.querySelector('script[type="module"]');
-            if (!el) return '(no script[type=module] element found in DOM)';
-            return String(el.textContent.length) + ' characters';
+            if (!el) return '(no script[type=module] element in DOM)';
+            if (!el.src) return 'inline, ' + el.textContent.length + ' characters';
+            // Matched on `el.src` (absolute) rather than the attribute: the
+            // attribute is relative — "./app.js?v=..." — while the error entry
+            // carries the resolved URL, so comparing the two never matched and
+            // a genuinely missing bundle was reported as loading fine.
+            var failed = resourceErrors.some(function (entry) {
+              return entry.indexOf(el.src) !== -1;
+            });
+            return el.getAttribute('src') + (failed ? '  — FAILED TO LOAD' : '  (no load error)');
           }, 'unknown');
           var readyState = probe(function () {
             return document.readyState;
@@ -159,7 +191,9 @@
             'Captured error: ' + (lastError || '(none — script may not have run at all)') + '\n' +
             'Boot stage reached: ' + bootStage + '\n' +
             'CSP violations: ' + (cspViolations.length ? cspViolations.join('; ') : 'none') + '\n' +
-            'Module script size in DOM: ' + moduleScriptLength + '\n' +
+            'Bundle: ' + bundle + '\n' +
+            'Failed resources: ' +
+              (resourceErrors.length ? resourceErrors.join('; ') : 'none') + '\n' +
             'Document ready state: ' + readyState + '\n' +
             'URL: ' + location.href + '\n' +
             'User agent: ' + navigator.userAgent + '\n' +

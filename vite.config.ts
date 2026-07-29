@@ -1,65 +1,126 @@
+import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath, URL } from 'node:url';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
-import { viteSingleFile } from 'vite-plugin-singlefile';
 
 /**
  * Relative base so the static build works both locally and under the GitHub
  * Pages project sub-path (/<repo>/) without extra configuration.
  *
- * The build is inlined into a single `index.html` (`viteSingleFile`) to kill a
- * recurring blank-page failure for good. Vite content-hashes asset filenames and
- * each Pages deploy replaces the previous build's files outright, so a browser
- * holding a cached `index.html` from an earlier deploy requested JS/CSS that no
+ * ## The blank page, and why the build is shaped this way
+ *
+ * The original failure: Vite content-hashes asset filenames, and each Pages
+ * deploy replaces the previous build's files outright, so a browser holding a
+ * cached `index.html` from an earlier deploy requested JS and CSS that no
  * longer existed. Both 404'd, nothing ran, and the page rendered plain white
- * with no error anywhere — indistinguishable from the site being down.
+ * with no error anywhere.
  *
- * Two earlier attempts did not hold: `Cache-Control` meta tags (not honoured as
- * real caching directives, and Pages serves static files with no way to set
- * response headers) and copying the previous deploy's assets forward in CI (the
- * fetch failed silently on the runner and preserved nothing). With one
- * self-contained file there are no cross-file versions to mismatch: whatever
- * HTML a browser has, cached or fresh, is a complete working app.
+ * Two attempts at that did not hold: `Cache-Control` meta tags (not honoured
+ * as real caching directives, and Pages serves static files with no way to set
+ * response headers) and copying the previous deploy's assets forward in CI
+ * (the fetch failed silently on the runner and preserved nothing).
  *
- * The trade is losing separately-cacheable JS/CSS — every change re-downloads
- * the whole bundle (~100 kB gzipped). For a static game that size, worth it.
+ * The third attempt inlined everything into one self-contained `index.html`,
+ * which did fix it — there are no cross-file versions to mismatch when there
+ * is only one file. **It then created a second blank page of its own**, which
+ * is what this configuration exists to answer.
+ *
+ * As the game grew, so did that single inline `<script>`: ~890 kB when the
+ * page last worked, ~945 kB when it broke. A device reported the app dead
+ * again, and the watchdog's diagnostic said something very specific:
+ *
+ *     Module script size in DOM: 0 characters
+ *     Script tags on page: 2
+ *
+ * The script *element* existed and was empty. The watchdog that printed that
+ * lives at the very end of the document — byte ~1,006,000 of ~1,014,000 — and
+ * it ran, so the browser had received the whole file. A complete document,
+ * both script tags parsed, and the 945 kB of program between them discarded.
+ * That is an engine limit on how much text one inline script may hold, and no
+ * amount of inlining discipline gets around it: the file only grows.
+ *
+ * ## What this does instead
+ *
+ * The bundle goes back to being an external file, but with a **stable
+ * filename** — `app.js`, never content-hashed — plus a `?v=` build hash on the
+ * reference. That fixes both failures at once:
+ *
+ * - Nothing is inlined, so no script element is anywhere near an engine limit.
+ * - A cached `index.html` from any earlier deploy asks for `./app.js`, which
+ *   always exists, because the name never changes. The 404 that caused the
+ *   original blank page is now impossible rather than merely unlikely.
+ * - The `?v=` hash still busts HTTP caches on every deploy, and a stale query
+ *   is harmless: a static server ignores it and serves the current file.
+ *
+ * The one thing lost is the "whatever HTML you have is a whole working app"
+ * guarantee. What replaces it is weaker but sufficient: whatever HTML you
+ * have, the file it asks for is there. A cached shell paired with a newer
+ * `app.js` still boots, because the shell is a `<div id="root">` and two
+ * script tags — it carries no version-specific contract with the bundle.
  */
+
+/** Stable asset names. The whole fix rests on these never being hashed. */
+const ENTRY_JS = 'app.js';
+const ENTRY_CSS = 'app.css';
+
 /**
- * Vite always emits `crossorigin` on the entry `<script type="module">`,
- * meaningful only for a script fetched from a `src` URL. Once viteSingleFile
- * inlines that entry's code directly into the tag, the attribute is left on
- * a script with no URL for cross-origin semantics to apply to — a
- * combination the spec leaves undefined and that testing here can't rule out
- * as a WebKit-specific quirk, since only a Chromium engine is available in
- * this environment. Strip it so the shipped tag is unambiguous: a plain
- * inline module script, nothing more.
+ * Stamps `?v=<hash>` onto the bundle references in the built HTML.
+ *
+ * Runs in `writeBundle`, once the real files are on disk, so the hash is of
+ * the bytes actually shipped rather than of an intermediate Rollup chunk.
  */
-function stripInlineModuleCrossorigin() {
+function versionAssets() {
   return {
-    name: 'strip-inline-module-crossorigin',
-    // viteSingleFile does its inlining in generateBundle, after
-    // transformIndexHtml has already run and baked in `src="..."` — the
-    // attribute only becomes dangling once that src disappears. writeBundle
-    // runs once the final HTML has been written to disk, so this rewrites
-    // the actual shipped file rather than an intermediate one.
+    name: 'version-assets',
     writeBundle(options: { dir?: string }) {
       const dir = options.dir ?? 'dist';
       const htmlPath = `${dir}/index.html`;
-      const html = readFileSync(htmlPath, 'utf-8');
-      const stripped = html.replace(/<script type="module" crossorigin>/g, '<script type="module">');
-      if (stripped !== html) writeFileSync(htmlPath, stripped);
+      let html = readFileSync(htmlPath, 'utf-8');
+
+      for (const asset of [ENTRY_JS, ENTRY_CSS]) {
+        let contents: Buffer;
+        try {
+          contents = readFileSync(`${dir}/${asset}`);
+        } catch {
+          continue; // No CSS emitted, say — nothing to stamp.
+        }
+        const hash = createHash('sha256').update(contents).digest('hex').slice(0, 10);
+        // Only the exact unversioned reference, so re-running is a no-op.
+        html = html.replaceAll(`./${asset}"`, `./${asset}?v=${hash}"`);
+      }
+
+      writeFileSync(htmlPath, html);
     },
   };
 }
 
 export default defineConfig({
   base: './',
-  plugins: [react(), tailwindcss(), viteSingleFile(), stripInlineModuleCrossorigin()],
+  plugins: [react(), tailwindcss(), versionAssets()],
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
+    },
+  },
+  build: {
+    // One CSS file rather than per-chunk sheets, so there is a single stable
+    // name to reference.
+    cssCodeSplit: false,
+    rollupOptions: {
+      output: {
+        // `main.tsx` reaches the app through a dynamic import, which is what
+        // lets a top-level throw anywhere in the tree be caught and reported.
+        // Left alone that would emit a second, content-hashed chunk — exactly
+        // the hashed-filename 404 this is built to avoid — so the graph is
+        // folded into the one entry. Rollup still wraps the dynamically
+        // imported module in a deferred thunk, so the error boundary survives.
+        inlineDynamicImports: true,
+        entryFileNames: ENTRY_JS,
+        assetFileNames: (info) =>
+          info.names?.some((name) => name.endsWith('.css')) ? ENTRY_CSS : '[name][extname]',
+      },
     },
   },
   server: {
