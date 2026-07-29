@@ -4,11 +4,13 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <meta name="theme-color" content="#04121f" />
-    <!-- The production build inlines all JS and CSS into this file (see
-         vite.config.ts), so there are no separate assets that a cached copy of
-         this document could reference after they were replaced — the cause of a
-         recurring blank white page. These hints ask for a fresh copy anyway;
-         they are not load-bearing, since any cached version is a whole app. -->
+    <!-- The bundle is an external file with a *stable* name (see
+         vite.config.ts): a cached copy of this document always asks for
+         ./app.js, which always exists, so the hashed-filename 404 that caused
+         the original blank page cannot happen. Inlining it instead — the
+         previous fix — traded that bug for an engine limit on how much text
+         one script element may hold, which is the failure that came back.
+         These hints ask for a fresh copy anyway; they are not load-bearing. -->
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
@@ -52,6 +54,27 @@
           );
         });
 
+        // Resource load failures — the bundle 404ing, a network drop mid-fetch
+        // — do not bubble, so they are only visible on the capture phase and
+        // are invisible to the plain `error` handler below. This is the exact
+        // failure the very first blank page was: a cached index.html asking
+        // for a file a later deploy had replaced. Stable filenames should make
+        // it impossible now, but "should" is what the last three attempts all
+        // said, so it is worth reporting rather than assuming.
+        var resourceErrors = [];
+        window.addEventListener(
+          'error',
+          function (event) {
+            var target = event && event.target;
+            if (target && target !== window && target.tagName) {
+              resourceErrors.push(
+                target.tagName.toLowerCase() + ' failed: ' + (target.src || target.href || '?')
+              );
+            }
+          },
+          true
+        );
+
         window.addEventListener('error', function (event) {
           lastError = (event && event.message) || 'Unknown script error';
           if (event && event.filename) {
@@ -63,7 +86,7 @@
           lastError = 'Unhandled promise rejection: ' + (reason && reason.message ? reason.message : String(reason));
         });
 
-        window.setTimeout(function () {
+        function report() {
           var root = document.getElementById('root');
           if (!root || root.firstChild) return; // App mounted normally.
 
@@ -134,16 +157,25 @@
           var scriptCount = probe(function () {
             return String(document.getElementsByTagName('script').length);
           }, 'unknown');
-          // The single most direct check available without real devtools: is
-          // the app's code actually sitting in the DOM at its expected size,
-          // or did something between the server and this engine strip or
-          // truncate it before the engine ever got a chance to run it? A
-          // module script that never executes is indistinguishable, from
-          // every channel above, from one that was never really there.
-          var moduleScriptLength = probe(function () {
+          // Where the bundle was supposed to come from, and whether it
+          // arrived. This replaces a probe that measured the *inline* script's
+          // length, which was the right question while the whole app lived
+          // inside the tag — and is how the last failure was diagnosed: it
+          // reported 0 characters for a 945 kB inline script, proving the
+          // engine had discarded it. The bundle is external now, so the
+          // meaningful question is whether the file loaded.
+          var bundle = probe(function () {
             var el = document.querySelector('script[type="module"]');
-            if (!el) return '(no script[type=module] element found in DOM)';
-            return String(el.textContent.length) + ' characters';
+            if (!el) return '(no script[type=module] element in DOM)';
+            if (!el.src) return 'inline, ' + el.textContent.length + ' characters';
+            // Matched on `el.src` (absolute) rather than the attribute: the
+            // attribute is relative — "./app.js?v=..." — while the error entry
+            // carries the resolved URL, so comparing the two never matched and
+            // a genuinely missing bundle was reported as loading fine.
+            var failed = resourceErrors.some(function (entry) {
+              return entry.indexOf(el.src) !== -1;
+            });
+            return el.getAttribute('src') + (failed ? '  — FAILED TO LOAD' : '  (no load error)');
           }, 'unknown');
           var readyState = probe(function () {
             return document.readyState;
@@ -159,7 +191,9 @@
             'Captured error: ' + (lastError || '(none — script may not have run at all)') + '\n' +
             'Boot stage reached: ' + bootStage + '\n' +
             'CSP violations: ' + (cspViolations.length ? cspViolations.join('; ') : 'none') + '\n' +
-            'Module script size in DOM: ' + moduleScriptLength + '\n' +
+            'Bundle: ' + bundle + '\n' +
+            'Failed resources: ' +
+              (resourceErrors.length ? resourceErrors.join('; ') : 'none') + '\n' +
             'Document ready state: ' + readyState + '\n' +
             'URL: ' + location.href + '\n' +
             'User agent: ' + navigator.userAgent + '\n' +
@@ -182,7 +216,50 @@
           box.appendChild(reload);
 
           document.body.appendChild(box);
-        }, 2500);
+
+          // Everything above is a guess about a page that is still live. An
+          // exceptionally slow connection can deliver the bundle after the
+          // deadline has passed, and React would then mount underneath this
+          // overlay — leaving the player staring at a failure screen for an
+          // app that is running fine behind it. Stand down the moment
+          // anything reaches #root. Polling rather than MutationObserver
+          // keeps this script to the ES5 that made it trustworthy; it is one
+          // property read every 400ms, and it stops the instant it succeeds.
+          var heal = window.setInterval(function () {
+            if (!root.firstChild) return;
+            window.clearInterval(heal);
+            if (box.parentNode) box.parentNode.removeChild(box);
+          }, 400);
+        }
+
+        // While the app was inlined, the countdown could start at parse time:
+        // the whole program had already arrived with the document, so 2.5s of
+        // nothing meant something was genuinely wrong. The bundle is a
+        // separate ~945 kB file now, and on a slow connection the download
+        // alone can outlast that — the watchdog would accuse a page that is
+        // merely still loading.
+        //
+        // `load` is the anchor to start from. Module scripts are deferred, so
+        // it fires once app.js has been fetched *and* evaluated, and it fires
+        // even when the fetch failed — which is exactly the case worth
+        // reporting. What it does not survive is a connection that stalls
+        // open forever, so an outer cap still reports eventually.
+        var armed = false;
+        function arm(delay) {
+          if (armed) return;
+          armed = true;
+          window.setTimeout(report, delay);
+        }
+        if (document.readyState === 'complete') {
+          arm(2500);
+        } else {
+          window.addEventListener('load', function () {
+            arm(2500);
+          });
+          window.setTimeout(function () {
+            arm(0);
+          }, 20000);
+        }
       })();
     </script>
     <script type="module" src="/src/main.tsx"></script>
