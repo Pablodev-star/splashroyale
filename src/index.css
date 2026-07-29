@@ -60,6 +60,16 @@
   --animate-radar: radar 1.8s ease-out infinite;
   --animate-scan: scan 2.6s linear infinite;
   --animate-tilt: tilt 5s ease-in-out infinite;
+
+  /* Pack opening ceremony (Block 10B). The build-up beats are driven from
+     TypeScript because their durations scale with rarity; these are the
+     one-shot flourishes each beat fires. */
+  --animate-orb-pulse: orb-pulse 620ms ease-in-out infinite;
+  --animate-shake-hard: shake-hard 220ms steps(5, jump-none) infinite;
+  --animate-flash-out: flash-out 420ms var(--ease-pixel) both;
+  --animate-ring-out: ring-out 620ms var(--ease-pixel) both;
+  --animate-spark-out: spark-out 720ms var(--ease-pixel) both;
+  --animate-slam-in: slam-in 380ms var(--ease-overshoot) both;
 }
 
 /* ---- 3D + rarity presentation keyframes ---------------------------------- */
@@ -372,6 +382,91 @@
   }
   75% {
     transform: translate(-1px, -2px);
+  }
+}
+
+/* ---- Pack opening ceremony ------------------------------------------------ */
+
+/* The sealed card breathing while the rarity ladder climbs. Speeds up between
+   beats by shortening the duration, not by swapping the keyframes. */
+@keyframes orb-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.14);
+  }
+}
+
+/* Heavier than `shake`, and used only at the top of the ladder — if the mild
+   one were reused the escalation would flatten out exactly where it matters. */
+@keyframes shake-hard {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  20% {
+    transform: translate(-5px, 3px);
+  }
+  40% {
+    transform: translate(5px, -4px);
+  }
+  60% {
+    transform: translate(-4px, -3px);
+  }
+  80% {
+    transform: translate(4px, 3px);
+  }
+}
+
+@keyframes flash-out {
+  from {
+    opacity: 0.92;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes ring-out {
+  from {
+    transform: scale(0.15);
+    opacity: 0.95;
+  }
+  to {
+    transform: scale(2.8);
+    opacity: 0;
+  }
+}
+
+/* Direction comes from --dx/--dy set per spark, so one keyframe covers a whole
+   burst fanned in every direction. */
+@keyframes spark-out {
+  from {
+    transform: translate(0, 0) scale(1);
+    opacity: 1;
+  }
+  to {
+    transform: translate(var(--dx, 0), var(--dy, 0)) scale(0.2);
+    opacity: 0;
+  }
+}
+
+/* The card arriving. Overshoots hard, because the reveal is the payoff and a
+   gentle fade reads as an afterthought. */
+@keyframes slam-in {
+  0% {
+    transform: scale(2.4) rotate(-6deg);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(0.92) rotate(2deg);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1) rotate(0deg);
+    opacity: 1;
   }
 }
 
