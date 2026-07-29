@@ -1232,6 +1232,35 @@ export class MatchEngine {
     return this.fighters[id];
   }
 
+  /**
+   * The hazards currently threatening `id`, in world units.
+   *
+   * Only effects owned by the *other* fighter are returned, because that is
+   * exactly the set a player would be watching out for — nothing here is
+   * information the human cannot also see on screen, which is the rule the
+   * whole bot is built on.
+   *
+   * The elements are the engine's own state objects, not copies — the bot
+   * only reads them, and deep-copying hazards several times a second would
+   * allocate for no benefit. The four arrays themselves are fresh, which is
+   * the cost of filtering by owner; at a handful of calls per second that is
+   * noise next to the per-frame work either side of it.
+   */
+  threatsAgainst(id: FighterId): {
+    zones: readonly ZoneState[];
+    waves: readonly WaveState[];
+    mines: readonly MineState[];
+    geysers: readonly GeyserState[];
+  } {
+    const hostile = id === 'self' ? 'opponent' : 'self';
+    return {
+      zones: this.zones.filter((z) => z.owner === hostile),
+      waves: this.waves.filter((w) => w.owner === hostile),
+      mines: this.mines.filter((m) => m.owner === hostile),
+      geysers: this.geysers.filter((g) => g.owner === hostile && !g.fired),
+    };
+  }
+
   /** The card in a slot, for HUD labels and cooldown readouts. */
   cardFor(id: FighterId, slot: AbilitySlot): AbilityCard {
     return this.fighters[id].loadout[slot];

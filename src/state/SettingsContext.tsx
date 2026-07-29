@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from 'react';
 import type { GameSettings } from '@/types/game';
+import { DEFAULT_BOT_DIFFICULTY } from '@/game/engine/difficulty';
 
 const STORAGE_KEY = 'splash-royale:settings:v1';
 
@@ -20,6 +21,7 @@ export const DEFAULT_SETTINGS: GameSettings = {
   showMinimap: true,
   leftHandedControls: false,
   controlScheme: 'auto',
+  botDifficulty: DEFAULT_BOT_DIFFICULTY,
   playerName: 'Rookie',
 };
 

@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { AbilitySlot, Deck, HudState } from '@/types/game';
-import { SLOT_ORDER } from '@/data/cards';
+import { CARD_DEF_BY_ID, SLOT_ORDER, resolveCard } from '@/data/cards';
 import { BOT_DECK, sanitiseDeck, type CardLookup } from '@/data/decks';
 import { useCollection } from '@/state/PlayerContext';
 import { CHARACTERS } from '@/data/characters';
 import { useAnimationFrame } from '@/hooks/useAnimationFrame';
 import { MatchEngine } from './MatchEngine';
 import { Bot } from './bot';
+import { botProfile, type BotDifficulty } from './difficulty';
 import { facingFromYaw, worldMove } from './camera';
 import { IDLE_INTENT, type EngineSnapshot, type Intent, type Loadout } from './types';
 
@@ -58,8 +59,10 @@ export interface MatchEngineOptions {
   deck: Deck;
   durationMs: number;
   paused: boolean;
-  /** Bots only in local play; online opponents arrive with Block 6. */
+  /** Bots only in local play; online opponents arrive with Block 9. */
   withBot?: boolean;
+  /** Which bot to fight. Ignored when `withBot` is false. */
+  difficulty?: BotDifficulty;
 }
 
 /**
@@ -74,6 +77,25 @@ function loadoutFor(deck: Deck, lookup: CardLookup, ownedOnly = true): Loadout {
     attack1: lookup[safe.cards.attack1],
     attack2: lookup[safe.cards.attack2],
     ultimate: lookup[safe.cards.ultimate],
+  };
+}
+
+/**
+ * The bot's deck, resolved at the difficulty's card level.
+ *
+ * Deliberately *not* built from the player's collection lookup, which is what
+ * it used to do: that resolved every bot card at whatever level this account
+ * happened to have it, so a Rookie fought with the player's own upgrades and a
+ * fresh account faced level-1 cards no matter which difficulty it picked. The
+ * bot's numbers are the difficulty's business, so they come from the catalogue
+ * at a level the profile names.
+ */
+function botLoadout(deck: Deck, level: number): Loadout {
+  const at = (id: string) => resolveCard(CARD_DEF_BY_ID[id], { level, copies: 0 });
+  return {
+    attack1: at(deck.cards.attack1),
+    attack2: at(deck.cards.attack2),
+    ultimate: at(deck.cards.ultimate),
   };
 }
 
@@ -95,9 +117,13 @@ export function useMatchEngine({
   durationMs,
   paused,
   withBot = true,
+  difficulty,
 }: MatchEngineOptions): MatchEngineResult {
   const inputRef = useRef<PlayerInput>({ ...EMPTY_INPUT });
-  const botRef = useRef<Bot>(new Bot());
+  // One bot per match, built with the difficulty chosen before it started.
+  // Rebuilding it mid-match would reset its charge and strafe state.
+  const botRef = useRef<Bot>(null as unknown as Bot);
+  if (botRef.current === null) botRef.current = new Bot(difficulty);
   const { cardById } = useCollection();
 
   // The deck is captured once per match. Re-reading it every frame would let a
@@ -117,7 +143,7 @@ export function useMatchEngine({
         name: opponentName,
         tag: withBot ? 'Bot' : 'Rival',
         colors: rival.colors,
-        loadout: loadoutFor(BOT_DECK, cardById, false),
+        loadout: botLoadout(BOT_DECK, botProfile(difficulty).cardLevel),
       },
       durationMs,
     });
@@ -148,7 +174,7 @@ export function useMatchEngine({
       input.ultimate = false;
 
       const opponentIntent = withBot
-        ? botRef.current.update(delta, opponent, self)
+        ? botRef.current.update(delta, opponent, self, engine.threatsAgainst('opponent'))
         : { ...IDLE_INTENT, facing: Math.atan2(self.z - opponent.z, self.x - opponent.x) };
 
       engine.step(delta, { self: selfIntent, opponent: opponentIntent });
