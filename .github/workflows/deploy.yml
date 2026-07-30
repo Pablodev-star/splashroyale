@@ -19,20 +19,25 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Check this workflow is the only thing publishing the site
+      - name: Report whether this workflow is the only thing publishing the site
         # The blank page that survived four fixes was two publishers racing.
-        # Pages was left on "Deploy from a branch", so every push to main
-        # triggered a legacy build that published the *repository root* —
-        # including the untransformed index.html, whose entry is /src/main.tsx
-        # and which no browser can run — while this workflow published dist/.
-        # Whichever finished last was the live site, so the same commit served
-        # a working app or a blank page depending on a race. It looks exactly
-        # like a caching bug from the outside, which is why it was chased as
-        # one for so long.
+        # Pages is set to "Deploy from a branch", so every push to main
+        # triggers a legacy build that publishes the *repository root* while
+        # this workflow publishes dist/. Whichever finishes last is the live
+        # site, so the same commit served a working app or a blank page
+        # depending on a race — which looks exactly like a caching bug from a
+        # device, and is why it was chased as one for so long.
         #
-        # A setting outside the repository cannot be fixed by a commit, so it
-        # is asserted here instead: if anyone flips the source back, the deploy
-        # fails loudly rather than shipping a coin toss.
+        # This reports and does not fail. An earlier version exited 1 here, and
+        # that was worse than the bug: it stopped the *good* publisher, leaving
+        # the legacy one unopposed, so the site went from intermittently broken
+        # to always broken. A check that disables the working half of a race is
+        # not a safety net.
+        #
+        # The repository is made to work under either publisher instead — see
+        # the committed root bundle below. Fixing the setting (Settings ->
+        # Pages -> Source -> GitHub Actions) makes that scaffolding removable.
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -44,16 +49,14 @@ jobs:
               | jq -r '.build_type // "unknown"'
           )"
           echo "Pages build_type: ${build_type}"
-          if [ "$build_type" = "legacy" ]; then
-            echo "::error::Pages is set to 'Deploy from a branch'. That publishes the"
-            echo "::error::repository root — the untransformed index.html, which asks for"
-            echo "::error::/src/main.tsx and cannot run — racing this workflow on every push."
-            echo "::error::Fix: Settings -> Pages -> Source -> GitHub Actions."
-            exit 1
-          fi
-          if [ "$build_type" != "workflow" ]; then
-            echo "::warning::Could not read the Pages source (got '${build_type}')."
-            echo "::warning::Check Settings -> Pages -> Source is 'GitHub Actions'."
+          if [ "$build_type" = "workflow" ]; then
+            echo "Only this workflow publishes. The root bundle fallback is no"
+            echo "longer needed and can be deleted (app.js, app.css, .nojekyll)."
+          else
+            echo "::warning::Pages source is '${build_type}', not 'workflow': a legacy"
+            echo "::warning::branch build publishes the repository root and races this"
+            echo "::warning::workflow on every push. The committed root bundle keeps the"
+            echo "::warning::site working either way, but fix it at Settings -> Pages."
           fi
       - uses: actions/setup-node@v4
         with:
@@ -61,6 +64,36 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
+      - name: Check the root bundle fallback is not stale
+        # app.js and app.css are committed at the repository root so that the
+        # legacy branch build — which publishes the root, not dist/ — serves a
+        # site that actually runs. The root index.html there is the source
+        # template, so its own entry (/src/main.tsx) 404s and the watchdog
+        # injects ./app.js instead; that only works if ./app.js is present and
+        # current.
+        #
+        # A warning rather than a failure: a stale root bundle still boots an
+        # older build of the game, and blocking the deploy over it would once
+        # again take out the publisher that serves the *correct* build.
+        continue-on-error: true
+        run: |
+          set -eu
+          stale=0
+          for asset in app.js app.css; do
+            if [ ! -f "$asset" ]; then
+              echo "::warning::${asset} is missing from the repository root."
+              stale=1
+            elif ! cmp -s "dist/$asset" "$asset"; then
+              echo "::warning::Root ${asset} differs from the build output."
+              stale=1
+            fi
+          done
+          if [ "$stale" = "1" ]; then
+            echo "::warning::A legacy branch build would serve an older game than this"
+            echo "::warning::deploy. Refresh with: npm run build && cp dist/app.js dist/app.css ."
+          else
+            echo "Root bundle fallback matches the build."
+          fi
       - name: Check the deploy cannot reproduce the blank page
         # The blank page was one stale index.html in a browser cache, asking
         # for an entry script that is not on the server. What makes that
