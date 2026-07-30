@@ -22,43 +22,50 @@ import tailwindcss from '@tailwindcss/vite';
  * response headers) and copying the previous deploy's assets forward in CI
  * (the fetch failed silently on the runner and preserved nothing).
  *
- * The third attempt inlined everything into one self-contained `index.html`,
- * which did fix it — there are no cross-file versions to mismatch when there
- * is only one file. **It then created a second blank page of its own**, which
- * is what this configuration exists to answer.
+ * The third attempt inlined everything into one self-contained `index.html`.
+ * That looked like it worked, and the blank page kept coming back anyway.
  *
- * As the game grew, so did that single inline `<script>`: ~890 kB when the
- * page last worked, ~945 kB when it broke. A device reported the app dead
- * again, and the watchdog's diagnostic said something very specific:
+ * ## The misdiagnosis, since it cost three deploys
  *
- *     Module script size in DOM: 0 characters
- *     Script tags on page: 2
+ * A watchdog probe reported `Module script size in DOM: 0 characters`, which
+ * was read as "the engine received a 945 kB inline script and discarded its
+ * contents" — an inline size limit. That was wrong. The probe measured
+ * `el.textContent.length` without checking `el.src`, and for an *external*
+ * script tag that is always 0. It was never evidence about inlining at all.
  *
- * The script *element* existed and was empty. The watchdog that printed that
- * lives at the very end of the document — byte ~1,006,000 of ~1,014,000 — and
- * it ran, so the browser had received the whole file. A complete document,
- * both script tags parsed, and the 945 kB of program between them discarded.
- * That is an engine limit on how much text one inline script may hold, and no
- * amount of inlining discipline gets around it: the file only grows.
+ * A later probe, which reports the bundle URL instead, gave the real answer:
  *
- * ## What this does instead
+ *     Bundle: /src/main.tsx  — FAILED TO LOAD
  *
- * The bundle goes back to being an external file, but with a **stable
- * filename** — `app.js`, never content-hashed — plus a `?v=` build hash on the
- * reference. That fixes both failures at once:
+ * `/src/main.tsx` is the dev entry. It appears in exactly one document: the
+ * untransformed source template, which no build has ever produced. The device
+ * was running a shell cached from when the site served the repository root,
+ * asking for a file that has never been deployed — and every earlier report
+ * fits that too, including "script tags on page: 2", which is what the source
+ * template has. The failure was never about the bundle's shape. It was always
+ * one stale document, and the app's own cache hints cannot evict it: meta
+ * `Cache-Control` is not a real caching directive, and Pages serves static
+ * files with no way to set response headers.
  *
- * - Nothing is inlined, so no script element is anywhere near an engine limit.
- * - A cached `index.html` from any earlier deploy asks for `./app.js`, which
- *   always exists, because the name never changes. The 404 that caused the
- *   original blank page is now impossible rather than merely unlikely.
- * - The `?v=` hash still busts HTTP caches on every deploy, and a stale query
- *   is harmless: a static server ignores it and serves the current file.
+ * ## What this does, and why it is still the right shape
  *
- * The one thing lost is the "whatever HTML you have is a whole working app"
- * guarantee. What replaces it is weaker but sufficient: whatever HTML you
- * have, the file it asks for is there. A cached shell paired with a newer
- * `app.js` still boots, because the shell is a `<div id="root">` and two
- * script tags — it carries no version-specific contract with the bundle.
+ * The bundle is an external file with a **stable filename** — `app.js`, never
+ * content-hashed — plus a `?v=` build hash on the reference.
+ *
+ * - A cached `index.html` of any vintage asks for `./app.js`, which always
+ *   exists, so the hashed-asset 404 is impossible rather than unlikely.
+ * - More importantly, a fixed name is what makes a broken shell *repairable*.
+ *   The watchdog in index.html can name the bundle without knowing the build,
+ *   so when a shell's own entry script 404s it injects the real one and the
+ *   app boots. Content-hashed names would make that impossible: the stale
+ *   document could not know what to ask for.
+ * - The `?v=` hash busts HTTP caches on each deploy, and a stale query is
+ *   harmless — a static server ignores it and serves the current file.
+ *
+ * Do not reintroduce hashed filenames, and do not re-inline the bundle: the
+ * recovery path in index.html depends on `./app.js` being a real, fixed URL
+ * sitting next to whatever shell the browser happens to hold. CI enforces
+ * both, and that the watchdog's name for the bundle still matches this one.
  */
 
 /** Stable asset names. The whole fix rests on these never being hashed. */
