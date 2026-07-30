@@ -71,16 +71,20 @@
         // are invisible to the plain `error` handler below.
         //
         // This is not a hypothetical channel: it is the one that finally
-        // explained the blank page, after three fixes aimed at the wrong
+        // explained the blank page, after four fixes aimed at the wrong
         // thing. The report said
         //
         //     Bundle: /src/main.tsx  — FAILED TO LOAD
         //
-        // and /src/main.tsx is the *dev* entry — it exists only in the
-        // untransformed source template, in a document no build has ever
-        // produced. The device was running a shell it had cached from a time
-        // when the site served the repository root, and asking for a file
-        // that has never been deployed.
+        // and /src/main.tsx is the *dev* entry, which exists only in the
+        // untransformed source template. No build produces that document, so
+        // the server was serving the repository root — a legacy Pages branch
+        // build racing the workflow on every push, each publishing a
+        // different site (see the guard in .github/workflows/deploy.yml).
+        //
+        // That cause is a repository setting, not something this file can fix.
+        // What this file can do is make such a document survivable instead of
+        // dead, whether it arrives from a bad publish or a stale cache.
         var resourceErrors = [];
         window.addEventListener(
           'error',
