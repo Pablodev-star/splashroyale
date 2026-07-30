@@ -7,10 +7,11 @@
     <!-- The bundle is an external file with a *stable* name (see
          vite.config.ts): a cached copy of this document always asks for
          ./app.js, which always exists, so the hashed-filename 404 that caused
-         the original blank page cannot happen. Inlining it instead — the
-         previous fix — traded that bug for an engine limit on how much text
-         one script element may hold, which is the failure that came back.
-         These hints ask for a fresh copy anyway; they are not load-bearing. -->
+         the blank page cannot happen — and the watchdog below can repair a
+         shell that asks for anything else, because it knows that name.
+         These hints ask for a fresh copy anyway; they are NOT load-bearing and
+         never were. Meta cache directives are not honoured as real caching
+         headers, which is exactly why a stale shell survived this long. -->
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
@@ -42,6 +43,17 @@
       (function () {
         var lastError = null;
 
+        // The built bundle's filename, which vite.config.ts keeps stable
+        // precisely so this script can name it without knowing the build
+        // (ENTRY_JS there; CI fails the build if the two drift apart). Naming
+        // it is what makes recovery from a wrong shell possible at all.
+        var ENTRY = 'app.js';
+
+        /** Set once recoverBundle has run; also the reason, for the report. */
+        var recoveryReason = null;
+        /** Whether the report already granted recovery its grace period. */
+        var recoveryGraced = false;
+
         // A Content-Security-Policy that blocks inline scripts (injected by a
         // network-level filter or proxy ahead of this page, since nothing
         // here sets one) fires this event instead of a normal script error —
@@ -56,24 +68,90 @@
 
         // Resource load failures — the bundle 404ing, a network drop mid-fetch
         // — do not bubble, so they are only visible on the capture phase and
-        // are invisible to the plain `error` handler below. This is the exact
-        // failure the very first blank page was: a cached index.html asking
-        // for a file a later deploy had replaced. Stable filenames should make
-        // it impossible now, but "should" is what the last three attempts all
-        // said, so it is worth reporting rather than assuming.
+        // are invisible to the plain `error` handler below.
+        //
+        // This is not a hypothetical channel: it is the one that finally
+        // explained the blank page, after three fixes aimed at the wrong
+        // thing. The report said
+        //
+        //     Bundle: /src/main.tsx  — FAILED TO LOAD
+        //
+        // and /src/main.tsx is the *dev* entry — it exists only in the
+        // untransformed source template, in a document no build has ever
+        // produced. The device was running a shell it had cached from a time
+        // when the site served the repository root, and asking for a file
+        // that has never been deployed.
         var resourceErrors = [];
         window.addEventListener(
           'error',
           function (event) {
             var target = event && event.target;
-            if (target && target !== window && target.tagName) {
-              resourceErrors.push(
-                target.tagName.toLowerCase() + ' failed: ' + (target.src || target.href || '?')
-              );
+            if (!target || target === window || !target.tagName) return;
+            var url = target.src || target.href || '?';
+            resourceErrors.push(target.tagName.toLowerCase() + ' failed: ' + url);
+
+            // A shell whose entry script 404s cannot recover on its own —
+            // nothing in it will ever run, and reloading just re-serves the
+            // same cached document. But asset names are stable now, so the
+            // repair is possible from inside the broken page: ./app.js sits
+            // next to whatever index.html the browser holds, whatever its
+            // vintage. Fixes the dev-template case above and the original
+            // failure (a cached shell asking for a content-hashed asset a
+            // later deploy replaced) with the same three lines.
+            if (
+              target.tagName.toLowerCase() === 'script' &&
+              target.type === 'module' &&
+              url.indexOf('/' + ENTRY) === -1 // Not the real bundle: retrying would loop.
+            ) {
+              recoverBundle('entry script 404 (' + url + '), injected ./' + ENTRY);
             }
           },
           true
         );
+
+        /**
+         * Loads the real bundle into a shell that asked for the wrong one.
+         *
+         * Once only, and never for a failure of the bundle itself, so a
+         * genuinely missing app cannot turn into a reload loop.
+         */
+        function recoverBundle(reason) {
+          if (recoveryReason) return;
+          recoveryReason = reason;
+
+          var css = document.createElement('link');
+          css.rel = 'stylesheet';
+          css.href = './app.css';
+          document.head.appendChild(css);
+
+          var script = document.createElement('script');
+          script.type = 'module';
+          script.src = './' + ENTRY;
+          // Recovery only patches this page view. Replace the cached document
+          // too, or the next visit starts from the same broken shell.
+          script.addEventListener('load', refreshCachedShell);
+          document.body.appendChild(script);
+        }
+
+        /**
+         * Re-fetches this document from the network, updating the HTTP cache
+         * entry behind it.
+         *
+         * The stale shell is the whole bug, and it survives ordinary reloads —
+         * the meta cache hints in <head> are not real caching directives, and
+         * Pages serves static files with no way to set response headers. This
+         * is the one lever the page itself has. Cheap: the shell is ~12 kB.
+         */
+        var shellRefreshed = false;
+        function refreshCachedShell() {
+          if (shellRefreshed || !window.fetch) return;
+          shellRefreshed = true;
+          try {
+            window.fetch(location.href, { cache: 'reload' })['catch'](function () {});
+          } catch (refreshError) {
+            /* Offline, or an engine without it. Nothing to do. */
+          }
+        }
 
         window.addEventListener('error', function (event) {
           lastError = (event && event.message) || 'Unknown script error';
@@ -88,7 +166,22 @@
 
         function report() {
           var root = document.getElementById('root');
-          if (!root || root.firstChild) return; // App mounted normally.
+          if (!root || root.firstChild) {
+            // App mounted normally. A more reliable moment to catch that than
+            // `load` is, since React may commit just after it.
+            if (root) refreshCachedShell();
+            return;
+          }
+
+          // Recovery is downloading a fresh ~945 kB bundle. Give that its own
+          // grace period rather than accusing a page that is busy fixing
+          // itself; if it does not arrive, the report runs after all and says
+          // that recovery was tried.
+          if (recoveryReason && !recoveryGraced) {
+            recoveryGraced = true;
+            window.setTimeout(report, 20000);
+            return;
+          }
 
           // Second channel, independent of the event listeners above: WebKit
           // has a documented history of not reliably firing `error` for
@@ -194,6 +287,7 @@
             'Bundle: ' + bundle + '\n' +
             'Failed resources: ' +
               (resourceErrors.length ? resourceErrors.join('; ') : 'none') + '\n' +
+            'Recovery: ' + (recoveryReason || 'not attempted') + '\n' +
             'Document ready state: ' + readyState + '\n' +
             'URL: ' + location.href + '\n' +
             'User agent: ' + navigator.userAgent + '\n' +
@@ -211,7 +305,13 @@
               'border:none;font-weight:bold;font-family:inherit;font-size:13px;cursor:pointer'
           );
           reload.addEventListener('click', function () {
-            location.reload();
+            // A plain reload can be answered by the very cached document that
+            // is broken — which is what made this bug look unfixable from the
+            // device: the player reloads, gets the same dead shell, and there
+            // is nothing else to try. A URL the cache has never seen forces
+            // the document to come from the network. Nothing in the app reads
+            // query parameters, so the extra one is inert.
+            location.replace(location.pathname + '?fresh=' + Date.now() + location.hash);
           });
           box.appendChild(reload);
 
@@ -229,6 +329,7 @@
             if (!root.firstChild) return;
             window.clearInterval(heal);
             if (box.parentNode) box.parentNode.removeChild(box);
+            refreshCachedShell();
           }, 400);
         }
 
@@ -249,6 +350,14 @@
           if (armed) return;
           armed = true;
           window.setTimeout(report, delay);
+
+          // A working load is the best chance to replace a bad cached shell,
+          // and the failure this addresses went exactly the other way round:
+          // the app ran, the player played, a reload was answered from cache,
+          // and the page was dead again. A good session should leave a good
+          // document behind it.
+          var root = document.getElementById('root');
+          if (root && root.firstChild) refreshCachedShell();
         }
         if (document.readyState === 'complete') {
           arm(2500);

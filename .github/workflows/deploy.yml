@@ -25,18 +25,16 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
-      - name: Check the deploy cannot reproduce either blank page
-        # Two different blank pages have shipped from this repo, and the fix
-        # for each is an invariant the other would break:
+      - name: Check the deploy cannot reproduce the blank page
+        # The blank page was one stale index.html in a browser cache, asking
+        # for an entry script that is not on the server. What makes that
+        # survivable is that the shell can repair itself: asset names are
+        # fixed, so the watchdog can inject the real bundle into a document of
+        # any vintage. Every check below protects that property.
         #
-        #   1. A cached index.html asking for a content-hashed asset a later
-        #      deploy had replaced. Guarded by asset names never being hashed.
-        #   2. The whole app inlined into one <script>, which an engine
-        #      silently truncated once it grew past ~945 kB. Guarded by
-        #      index.html staying small, i.e. nothing being inlined.
-        #
-        # Both are invisible on a development machine, so they are checked here
-        # rather than trusted to a config file staying the way it is.
+        # It is invisible on a development machine — where the shell is always
+        # the one just built — so it is checked here rather than trusted to a
+        # config file staying the way it is.
         run: |
           set -eu
           test -f dist/index.html || { echo "dist/index.html missing"; exit 1; }
@@ -52,12 +50,24 @@ jobs:
           html_bytes="$(wc -c < dist/index.html)"
           if [ "$html_bytes" -gt 200000 ]; then
             echo "index.html is ${html_bytes} bytes — the bundle looks inlined again."
-            echo "That is the failure where an engine drops an oversized inline script."
+            echo "An inlined bundle has no ./app.js next to it, so a stale shell"
+            echo "could no longer repair itself, and every deploy would ship a"
+            echo "megabyte of HTML that browsers cache as one indivisible unit."
             exit 1
           fi
 
           grep -q 'src="./app.js?v=' dist/index.html || {
             echo "index.html does not reference ./app.js with a cache-busting version"; exit 1;
+          }
+
+          # The watchdog names the bundle itself, so it can inject the real one
+          # into a shell that asked for something else — which is how a device
+          # holding a stale index.html recovers instead of showing a dead page.
+          # That only works while the two names agree.
+          grep -q "var ENTRY = 'app.js';" dist/index.html || {
+            echo "The watchdog's ENTRY no longer matches the emitted bundle name."
+            echo "Recovery from a stale cached shell would silently stop working."
+            exit 1
           }
 
           echo "OK: shell ${html_bytes} bytes, app.js $(wc -c < dist/app.js) bytes, no hashed names"
