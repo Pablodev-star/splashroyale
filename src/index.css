@@ -1,5 +1,14 @@
 @import 'tailwindcss';
 
+/* The built bundle is committed at the repository root so a legacy Pages
+ * branch build still serves a working site (see vite.config.ts). Tailwind's
+ * automatic content detection scans tracked files, so it would scan that
+ * 945 kB of minified JS, mistake fragments of it for class names, and emit
+ * utilities nobody wrote — growing app.css on every build, which then gets
+ * committed and scanned again. Naming the real sources stops that. */
+@source not "../app.js";
+@source not "../app.css";
+
 /* ------------------------------------------------------------------------- */
 /* Design tokens — see STYLEGUIDE.md. Never hardcode a hex value in a         */
 /* component; add a token here instead.                                       */

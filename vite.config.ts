@@ -66,6 +66,27 @@ import tailwindcss from '@tailwindcss/vite';
  * recovery path in index.html depends on `./app.js` being a real, fixed URL
  * sitting next to whatever shell the browser happens to hold. CI enforces
  * both, and that the watchdog's name for the bundle still matches this one.
+ *
+ * ## Why app.js and app.css are also committed at the repository root
+ *
+ * Pages' source is "Deploy from a branch", which the GitHub API confirms
+ * (`build_type: legacy`). That means every push publishes the site twice: a
+ * legacy build of the *repository root*, and this workflow's `dist/`. The last
+ * one to finish wins, so one commit serves a working game or a blank page
+ * depending on a race — the whole bug, and the reason four fixes each seemed
+ * to work for a while.
+ *
+ * The setting lives outside the repository, so the repository is made to work
+ * under either publisher: the built bundle is committed at the root, where a
+ * legacy build serves it. The root `index.html` there is this source template,
+ * so its own entry (`/src/main.tsx`) fails — 404 on the real site, MIME
+ * rejection where the file is served — and the watchdog injects `./app.js`,
+ * which is now present. Verified by serving only git-tracked root files: boots
+ * in ~0.5s, fully playable.
+ *
+ * This is scaffolding around a misconfiguration, not a design. Once Pages'
+ * source is "GitHub Actions", `app.js`, `app.css` and `.nojekyll` can all be
+ * deleted from the root; the deploy says so when it sees the setting fixed.
  */
 
 /** Stable asset names. The whole fix rests on these never being hashed. */
