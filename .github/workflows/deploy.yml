@@ -19,6 +19,42 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Check this workflow is the only thing publishing the site
+        # The blank page that survived four fixes was two publishers racing.
+        # Pages was left on "Deploy from a branch", so every push to main
+        # triggered a legacy build that published the *repository root* —
+        # including the untransformed index.html, whose entry is /src/main.tsx
+        # and which no browser can run — while this workflow published dist/.
+        # Whichever finished last was the live site, so the same commit served
+        # a working app or a blank page depending on a race. It looks exactly
+        # like a caching bug from the outside, which is why it was chased as
+        # one for so long.
+        #
+        # A setting outside the repository cannot be fixed by a commit, so it
+        # is asserted here instead: if anyone flips the source back, the deploy
+        # fails loudly rather than shipping a coin toss.
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          build_type="$(
+            curl -sS -H "Authorization: Bearer $GH_TOKEN" \
+                 -H "Accept: application/vnd.github+json" \
+                 "https://api.github.com/repos/${GITHUB_REPOSITORY}/pages" \
+              | jq -r '.build_type // "unknown"'
+          )"
+          echo "Pages build_type: ${build_type}"
+          if [ "$build_type" = "legacy" ]; then
+            echo "::error::Pages is set to 'Deploy from a branch'. That publishes the"
+            echo "::error::repository root — the untransformed index.html, which asks for"
+            echo "::error::/src/main.tsx and cannot run — racing this workflow on every push."
+            echo "::error::Fix: Settings -> Pages -> Source -> GitHub Actions."
+            exit 1
+          fi
+          if [ "$build_type" != "workflow" ]; then
+            echo "::warning::Could not read the Pages source (got '${build_type}')."
+            echo "::warning::Check Settings -> Pages -> Source is 'GitHub Actions'."
+          fi
       - uses: actions/setup-node@v4
         with:
           node-version: 22
